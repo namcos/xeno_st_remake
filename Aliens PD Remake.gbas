@@ -1,0 +1,2835 @@
+// --------------------------------- //
+// Project: Aliens PD Remake
+// Start: Sunday, December 12, 2021
+// IDE Version: 14.497
+
+
+SETCURRENTDIR("Media") // go to media files
+
+// HUDSON - Empty M41A Pulse Rifle/VP70 (may use HICK's shotgun when near - limited uses)
+// VASQUEZ - M56 Smartgun
+// DRAKE - M56 Smartgun + M20 Incinerator Unit
+// HICKS - Ithaca Model 37 shotgun
+// APONE - M240 Incinerator Unit
+// CROWE - VP70
+// DIETRICH - M240 Incinerator Unit
+// FROST - VP70
+// WIERZBOWSKI - M240 Incinerator Unit
+
+// Base dice - D6 with 6 as success
+// Stress die - D6 with 6 as success and 1 as a stress
+
+// Make basic soldier type - 12/12/21
+// Add basic combat rules inc armour reduction - 15/12/21
+// Computerised circle of death - 12/12/21
+// Add flamer, vp90 and shotgun variant - shotgun yet to add
+// Test
+// Add graphics
+// Make turn based
+//
+// Each square is 16x16 (20 squares scross x 6 squares down)
+// Sprites are 16x32 (1x2 squares)
+
+// add action variable for marine and alien to indicate how many turns taken
+// 1 & 2 is fine. 3 resets to 0 when all marines taken both turns
+
+	TYPE BasicMarine
+		id
+		name$
+		strength
+		agility
+		wits
+		empathy
+		health
+		status$ = "IDLE"
+		rangedCombat
+		closeCombat
+		stamina
+		stress
+		panicStatus$ = "O.K."
+		armorRating
+		success
+		acidSplashDamage
+
+		isHeldWeapon
+		isCaptured
+		paralyzedTime
+
+		//weapon$ = "Pulse Rifle"
+		//weaponBonus = 1
+		//weaponDamage = 2
+		//weaponArmPiercing = 1
+
+		//weapon$ = "VP-70"
+		//weaponBonus = 2
+		//weaponDamage = 1
+		//weaponArmPiercing = 0
+
+		//weaponFireIntensity = 0
+
+		weapon$
+		weaponBonus
+		weaponDamage
+		weaponArmPiercing
+		weaponArmDoubled
+		weaponFireIntensity
+		weaponSpecialisation
+		weaponRange
+
+		alienAimedX
+		alienAimedY
+		alienFireX
+		alienFireY
+
+		damageThisRound
+		turn
+		action
+		imageNumber
+		tileX
+		tileY
+		isDead = FALSE
+		aimedTarget = -1
+		target = -1
+	ENDTYPE
+
+	TYPE AlienSoldier
+		id = 0
+		speed = 2
+		health = 8
+		mobility = 8
+		observation = 8
+		armorRating = 10
+		armVsFire = 5
+		acidSplash = 10
+		success = 0
+		attackDie = 10
+		damage = 2
+		damageThisRound = 0
+		fireIntensityDamage = 0
+		isOnFire = 0
+		alreadyOnFire = 0
+		fireRoundCount = 0
+		attack = 0
+		turn = 0
+		action = 0
+		isHeadbiteSuccess = 0
+		imageNumber = 9
+		tileX = 4
+		tileY = 4
+		isDead = FALSE
+		target = -1
+	ENDTYPE
+
+	GLOBAL success = 0, panic = 0, font, isNewRound, roundCount = 1, result = 0, topGrid[], bottomGrid[], statusList$[], statusIndex = 0, mapWidth, mapHeight, statusUIY, nextMarine, marineFlashCount = 60, nextAlien, gameType = 0, totalTeamCount = 0, alienTurnDelay = 90
+	GLOBAL isMove = 0, isNext = 0, isEndTurn = 0, isFire = 0, isAim = 0, isAimed = 0, isUnaimed = 0, isMarineOccupied = 0, isAlienOccupied = 0, marineTurn = 1, isImpassable = 0
+	GLOBAL screenWidth, screenHeight, spriteWidth, spriteHeight, mx, my, b0, b1, tempMx, tempMy, quit, state = 0, buttonUIScreenWidth, fontX, fontY, rv = 0
+	GLOBAL newGameText$, optionsText$, textLen, aimButtonText$ = "AIM", fireButtonText$ = "FIRE", moveButtonText$ = "MOVE", endTurnButtonText$ = "END TURN", nextButtonText$ = "NEXT", readStatusText$
+	GLOBAL tempTarget, skillModification = 0, targetRange%
+
+	GLOBAL marine[] AS BasicMarine
+	GLOBAL alien[] AS AlienSoldier
+
+	LOADSPRITE "apone-aliens.png", 0
+	LOADSPRITE "crowe-aliens.png", 1
+	LOADSPRITE "drake-aliens.png", 2
+	LOADSPRITE "frost-aliens.png", 3
+	LOADSPRITE "hicks-aliens.png", 4
+	LOADSPRITE "hudson-aliens.png", 5
+	LOADSPRITE "vasquez-aliens.png", 6
+	LOADSPRITE "wierzbowski-aliens.png", 7
+	LOADSPRITE "dietrich-aliens.png", 8
+
+	LOADSPRITE "aliens-stock-image.png", 9
+	LOADSPRITE "marine-stock-image.png", 10
+
+	LOADSPRITE "bottomUIOverlay.bmp", 11
+
+	LOADSPRITE "background-level1.bmp", 17
+	LOADSPRITE "bottomGridTile32.bmp", 12
+	LOADSPRITE "bottomGridTile32Exit.bmp", 13
+
+	LOADSPRITE "temp-marine-tile.bmp", 14
+	//LOADSPRITE "temp-alien-tile.bmp", 15
+	LOADSPRITE "alien-32x64.bmp", 15
+
+	LOADSPRITE "mousetest.bmp", 18
+	LOADSPRITE "mouseaim.bmp", 19
+	LOADSPRITE "mousefire.bmp", 20
+
+	// Testing loadanim
+	LOADANIM "temp-marine-anim-tile.bmp", 16, 32, 32
+
+	LOADSOUND "sfx/alien-death-1.wav", 0, 1
+	LOADSOUND "sfx/alien-death-2.wav", 1, 1
+	LOADSOUND "sfx/alien-death-3.wav", 2, 1
+	LOADSOUND "sfx/alien-death-4.wav", 3, 1
+	LOADSOUND "sfx/alien-death-5.wav", 4, 1
+	LOADSOUND "sfx/alien-death-6.wav", 5, 1
+
+	LOADSOUND "sfx/dietrich-scream.wav", 6, 1
+	LOADSOUND "sfx/hudson-scream.wav", 7, 1
+
+	LOADSOUND "sfx/forget-him-hes-gone.wav", 8, 1
+	LOADSOUND "sfx/lets-go-marine.wav", 9, 1
+	LOADSOUND "sfx/theyre-all-around-us-man.wav", 10, 1
+	LOADSOUND "sfx/wierzbowski.wav", 11, 1
+	LOADSOUND "sfx/hudson-look-out.wav", 12, 1
+
+	LOADSOUND "sfx/vp-70-gun-sound.wav", 13, 1
+	LOADSOUND "sfx/flamer-gun-sound.wav", 14, 1
+	LOADSOUND "sfx/smart-gun-sound.wav", 15, 1
+	LOADSOUND "sfx/vasquez-gun-sound.wav",16, 1
+	LOADSOUND "sfx/hicks-shotgun-1.wav", 17, 1
+	LOADSOUND "sfx/hicks-shotgun-2.wav", 18, 1
+
+	DIM marine[9]
+	DIM alien[3]
+	DIM statusList$[1]
+
+	// Testing the alien array
+	alien[0].id = 0
+	alien[0].tileX = 4
+	alien[0].tileY = 11
+
+	alien[1].id = 1
+	alien[1].tileX = 1
+	alien[1].tileY = 8
+
+	alien[2].id = 2
+	alien[2].tileX = 3
+	alien[2].tileY = 10
+
+	DIM bottomGrid[6][18]
+	DIM topGrid[6][18]
+
+	// Apone
+	marine[0].id = 0
+	marine[0].name$ = "Apone"
+	marine[0].strength = 5
+	marine[0].agility = 4
+	marine[0].wits = 3
+	marine[0].empathy = 2
+	marine[0].health = 5
+	marine[0].rangedCombat = 3
+	marine[0].closeCombat = 2
+	marine[0].stamina = 1
+	marine[0].stress = 0
+	marine[0].armorRating = 6
+	marine[0].success = 0
+	marine[0].acidSplashDamage = 0
+	marine[0].isHeldWeapon = 1
+	marine[0].isCaptured = 0
+	marine[0].paralyzedTime = -1
+	marine[0].weapon$ = "M240 Incinerator Unit"
+	marine[0].weaponBonus = 0
+	marine[0].weaponDamage = 2
+	marine[0].weaponArmPiercing = 0
+	marine[0].weaponFireIntensity = 9
+	marine[0].weaponSpecialisation = 1
+	marine[0].weaponRange = 2
+	marine[0].damageThisRound = 0
+	marine[0].turn = 0
+	marine[0].action = 0
+	marine[0].imageNumber = 0
+	marine[0].tileX = 1
+	marine[0].tileY = 0
+
+	// Hicks
+	marine[1].id = 1
+	marine[1].name$ = "Hicks"
+	marine[1].strength = 5
+	marine[1].agility = 4
+	marine[1].wits = 3
+	marine[1].empathy = 2
+	marine[1].health = 5
+	marine[1].rangedCombat = 3
+	marine[1].closeCombat = 2
+	marine[1].stamina = 1
+	marine[1].stress = 0
+	marine[1].armorRating = 6
+	marine[1].success = 0
+	marine[1].acidSplashDamage = 0
+	marine[1].isHeldWeapon = 1
+	marine[1].isCaptured = 0
+	marine[1].paralyzedTime = -1
+	marine[1].weapon$ = "Shotgun"
+	marine[1].weaponBonus = 2
+	marine[1].weaponDamage = 3
+	marine[1].weaponArmPiercing = 0
+	marine[1].weaponArmDoubled = 1
+	marine[1].weaponFireIntensity = 0
+	marine[1].weaponSpecialisation = 1
+	marine[1].weaponRange = 1
+	marine[1].damageThisRound = 0
+	marine[1].turn = 0
+	marine[1].action = 0
+	marine[1].imageNumber = 4
+	marine[1].tileX = 4
+	marine[1].tileY = 0
+
+	// Hudson
+	marine[2].id = 2
+	marine[2].name$ = "Hudson"
+	marine[2].strength = 5
+	marine[2].agility = 4
+	marine[2].wits = 3
+	marine[2].empathy = 2
+	marine[2].health = 5
+	marine[2].rangedCombat = 3
+	marine[2].closeCombat = 2
+	marine[2].stamina = 1
+	marine[2].stress = 0
+	marine[2].armorRating = 6
+	marine[2].success = 0
+	marine[2].acidSplashDamage = 0
+	marine[2].isHeldWeapon = 1
+	marine[2].isCaptured = 0
+	marine[2].paralyzedTime = -1
+	marine[2].weapon$ = "VP-70"
+	marine[2].weaponBonus = 2
+	marine[2].weaponDamage = 1
+	marine[2].weaponArmPiercing = 0
+	marine[2].weaponFireIntensity = 0
+	marine[2].weaponRange = 2
+	marine[2].damageThisRound = 0
+	marine[2].turn = 0
+	marine[2].action = 0
+	marine[2].imageNumber = 5
+	marine[2].tileX = 1
+	marine[2].tileY = 1
+
+	// Crowe
+	marine[3].id = 3
+	marine[3].name$ = "Crowe"
+	marine[3].strength = 5
+	marine[3].agility = 4
+	marine[3].wits = 3
+	marine[3].empathy = 2
+	marine[3].health = 5
+	marine[3].rangedCombat = 3
+	marine[3].closeCombat = 2
+	marine[3].stamina = 1
+	marine[3].stress = 0
+	marine[3].armorRating = 6
+	marine[3].success = 0
+	marine[3].acidSplashDamage = 0
+	marine[3].isHeldWeapon = 1
+	marine[3].isCaptured = 0
+	marine[3].paralyzedTime = -1
+	marine[3].weapon$ = "VP-70"
+	marine[3].weaponBonus = 2
+	marine[3].weaponDamage = 1
+	marine[3].weaponArmPiercing = 0
+	marine[3].weaponFireIntensity = 0
+	marine[3].weaponRange = 2
+	marine[3].damageThisRound = 0
+	marine[3].turn = 0
+	marine[3].action = 0
+	marine[3].imageNumber = 1
+	marine[3].tileX = 2
+	marine[3].tileY = 1
+
+	// Frost
+	marine[4].id = 4
+	marine[4].name$ = "Frost"
+	marine[4].strength = 5
+	marine[4].agility = 4
+	marine[4].wits = 3
+	marine[4].empathy = 2
+	marine[4].health = 5
+	marine[4].rangedCombat = 3
+	marine[4].closeCombat = 2
+	marine[4].stamina = 1
+	marine[4].stress = 0
+	marine[4].armorRating = 6
+	marine[4].success = 0
+	marine[4].acidSplashDamage = 0
+	marine[4].isHeldWeapon = 1
+	marine[4].isCaptured = 0
+	marine[4].paralyzedTime = -1
+	marine[4].weapon$ = "VP-70"
+	marine[4].weaponBonus = 2
+	marine[4].weaponDamage = 1
+	marine[4].weaponArmPiercing = 0
+	marine[4].weaponFireIntensity = 0
+	marine[4].weaponRange = 2
+	marine[4].damageThisRound = 0
+	marine[4].turn = 0
+	marine[4].action = 0
+	marine[4].imageNumber = 3
+	marine[4].tileX = 3
+	marine[4].tileY = 1
+
+	// Dietritch
+	marine[5].id = 5
+	marine[5].name$ = "Dietritch"
+	marine[5].strength = 5
+	marine[5].agility = 4
+	marine[5].wits = 3
+	marine[5].empathy = 2
+	marine[5].health = 5
+	marine[5].rangedCombat = 3
+	marine[5].closeCombat = 2
+	marine[5].stamina = 1
+	marine[5].stress = 0
+	marine[5].armorRating = 6
+	marine[5].success = 0
+	marine[5].acidSplashDamage = 0
+	marine[5].isHeldWeapon = 1
+	marine[5].isCaptured = 0
+	marine[5].paralyzedTime = -1
+	marine[5].weapon$ = "M240 Incinerator Unit"
+	marine[5].weaponBonus = 0
+	marine[5].weaponDamage = 2
+	marine[5].weaponArmPiercing = 0
+	marine[5].weaponFireIntensity = 9
+	marine[5].weaponSpecialisation = 1
+	marine[5].weaponRange = 2
+	marine[5].damageThisRound = 0
+	marine[5].turn = 0
+	marine[5].action = 0
+	marine[5].imageNumber = 8
+	marine[5].tileX = 4
+	marine[5].tileY = 1
+
+	// WIERZBOWSKI
+	marine[6].id = 6
+	marine[6].name$ = "Wierzbowski"
+	marine[6].strength = 5
+	marine[6].agility = 4
+	marine[6].wits = 3
+	marine[6].empathy = 2
+	marine[6].health = 5
+	marine[6].rangedCombat = 3
+	marine[6].closeCombat = 2
+	marine[6].stamina = 1
+	marine[6].stress = 0
+	marine[6].armorRating = 6
+	marine[6].success = 0
+	marine[6].acidSplashDamage = 0
+	marine[6].isHeldWeapon = 1
+	marine[6].isCaptured = 0
+	marine[6].paralyzedTime = -1
+	marine[6].weapon$ = "M240 Incinerator Unit"
+	marine[6].weaponBonus = 0
+	marine[6].weaponDamage = 2
+	marine[6].weaponArmPiercing = 0
+	marine[6].weaponFireIntensity = 9
+	marine[6].weaponRange = 2
+	marine[6].damageThisRound = 0
+	marine[6].turn = 0
+	marine[6].action = 0
+	marine[6].imageNumber = 7
+	marine[6].tileX = 1
+	marine[6].tileY = 2
+
+	// Drake
+	marine[7].id = 7
+	marine[7].name$ = "Drake"
+	marine[7].strength = 5
+	marine[7].agility = 4
+	marine[7].wits = 3
+	marine[7].empathy = 2
+	marine[7].health = 5
+	marine[7].rangedCombat = 3
+	marine[7].closeCombat = 2
+	marine[7].stamina = 1
+	marine[7].stress = 0
+	marine[7].armorRating = 6
+	marine[7].success = 0
+	marine[7].acidSplashDamage = 0
+	marine[7].isHeldWeapon = 1
+	marine[7].isCaptured = 0
+	marine[7].paralyzedTime = -1
+	marine[7].weapon$ = "M56A2 Smart Gun"
+	marine[7].weaponBonus = 3
+	marine[7].weaponDamage = 3
+	marine[7].weaponArmPiercing = 0
+	marine[7].weaponFireIntensity = 0
+	marine[7].weaponSpecialisation = 1
+	marine[7].weaponRange = 3
+	marine[7].damageThisRound = 0
+	marine[7].turn = 0
+	marine[7].action = 0
+	marine[7].imageNumber = 2
+	marine[7].tileX = 3
+	marine[7].tileY = 2
+
+	// Vasquez
+	marine[8].id = 8
+	marine[8].name$ = "Vasquez"
+	marine[8].strength = 5
+	marine[8].agility = 4
+	marine[8].wits = 3
+	marine[8].empathy = 2
+	marine[8].health = 5
+	marine[8].rangedCombat = 3
+	marine[8].closeCombat = 2
+	marine[8].stamina = 1
+	marine[8].stress = 0
+	marine[8].armorRating = 6
+	marine[8].success = 0
+	marine[8].acidSplashDamage = 0
+	marine[8].isHeldWeapon = 1
+	marine[8].isCaptured = 0
+	marine[8].paralyzedTime = -1
+	marine[8].weapon$ = "M56A2 Smart Gun"
+	marine[8].weaponBonus = 3
+	marine[8].weaponDamage = 3
+	marine[8].weaponArmPiercing = 0
+	marine[8].weaponFireIntensity = 0
+	marine[8].weaponSpecialisation = 1
+	marine[8].weaponRange = 3
+	marine[8].damageThisRound = 0
+	marine[8].turn = 0
+	marine[8].action = 0
+	marine[8].imageNumber = 6
+	marine[8].tileX = 4
+	marine[8].tileY = 2
+
+
+	// Level 1 - Bottom Grid
+	bottomGrid[0][0] = 1
+	bottomGrid[0][1] = 1
+	bottomGrid[0][2] = 1
+	bottomGrid[0][3] = 1
+	bottomGrid[0][4] = 1
+	bottomGrid[0][5] = 1
+	bottomGrid[0][6] = 1
+	bottomGrid[0][7] = 1
+	bottomGrid[0][8] = 1
+	bottomGrid[0][9] = 1
+	bottomGrid[0][10] = 1
+	bottomGrid[0][11] = 1
+	bottomGrid[0][12] = 1
+	bottomGrid[0][13] = 1
+	bottomGrid[0][14] = 1
+	bottomGrid[0][15] = 1
+	bottomGrid[0][16] = 1
+	bottomGrid[0][17] = 1
+
+	bottomGrid[1][0] = 1
+	bottomGrid[1][1] = 1
+	bottomGrid[1][2] = 1
+	bottomGrid[1][3] = 1
+	bottomGrid[1][4] = 1
+	bottomGrid[1][5] = 1
+	bottomGrid[1][6] = 1
+	bottomGrid[1][7] = 1
+	bottomGrid[1][8] = 1
+	bottomGrid[1][9] = 1
+	bottomGrid[1][10] = 1
+	bottomGrid[1][11] = 1
+	bottomGrid[1][12] = 1
+	bottomGrid[1][13] = 1
+	bottomGrid[1][14] = 1
+	bottomGrid[1][15] = 1
+	bottomGrid[1][16] = 1
+	bottomGrid[1][17] = 1
+
+	bottomGrid[2][0] = 1
+	bottomGrid[2][1] = 1
+	bottomGrid[2][2] = 1
+	bottomGrid[2][3] = 1
+	bottomGrid[2][4] = 0
+	bottomGrid[2][5] = 0
+	bottomGrid[2][6] = 0
+	bottomGrid[2][7] = 0
+	bottomGrid[2][8] = 1
+	bottomGrid[2][9] = 1
+	bottomGrid[2][10] = 1
+	bottomGrid[2][11] = 1
+	bottomGrid[2][12] = 1
+	bottomGrid[2][13] = 1
+	bottomGrid[2][14] = 0
+	bottomGrid[2][15] = 0
+	bottomGrid[2][16] = 0
+	bottomGrid[2][17] = 1
+
+	bottomGrid[3][0] = 1
+	bottomGrid[3][1] = 1
+	bottomGrid[3][2] = 1
+	bottomGrid[3][3] = 1
+	bottomGrid[3][4] = 0
+	bottomGrid[3][5] = 0
+	bottomGrid[3][6] = 0
+	bottomGrid[3][7] = 0
+	bottomGrid[3][8] = 1
+	bottomGrid[3][9] = 1
+	bottomGrid[3][10] = 1
+	bottomGrid[3][11] = 1
+	bottomGrid[3][12] = 1
+	bottomGrid[3][13] = 1
+	bottomGrid[3][14] = 0
+	bottomGrid[3][15] = 0
+	bottomGrid[3][16] = 0
+	bottomGrid[3][17] = 1
+
+	bottomGrid[4][0] = 1
+	bottomGrid[4][1] = 1
+	bottomGrid[4][2] = 1
+	bottomGrid[4][3] = 1
+	bottomGrid[4][4] = 1
+	bottomGrid[4][5] = 1
+	bottomGrid[4][6] = 1
+	bottomGrid[4][7] = 1
+	bottomGrid[4][8] = 1
+	bottomGrid[4][9] = 1
+	bottomGrid[4][10] = 1
+	bottomGrid[4][11] = 1
+	bottomGrid[4][12] = 1
+	bottomGrid[4][13] = 1
+	bottomGrid[4][14] = 0
+	bottomGrid[4][15] = 0
+	bottomGrid[4][16] = 0
+	bottomGrid[4][17] = 1
+
+	bottomGrid[5][0] = 1
+	bottomGrid[5][1] = 1
+	bottomGrid[5][2] = 1
+	bottomGrid[5][3] = 1
+	bottomGrid[5][4] = 1
+	bottomGrid[5][5] = 1
+	bottomGrid[5][6] = 1
+	bottomGrid[5][7] = 1
+	bottomGrid[5][8] = 1
+	bottomGrid[5][9] = 1
+	bottomGrid[5][10] = 1
+	bottomGrid[5][11] = 1
+	bottomGrid[5][12] = 1
+	bottomGrid[5][13] = 1
+	bottomGrid[5][14] = 0
+	bottomGrid[5][15] = 0
+	bottomGrid[5][16] = 2
+	bottomGrid[5][17] = 1
+
+	FOR initMapX = 0 TO 5
+		FOR initMapY = 0 TO 17
+			topGrid[initMapX][initMapY] = 0
+		NEXT
+	NEXT
+
+
+	GETSCREENSIZE screenWidth, screenHeight
+
+	buttonUIScreenWidth = screenWidth / 45
+
+	statusUIY = screenHeight / 2.5
+
+	nextMarine = 0
+	nextAlien = 0
+
+	//font = GETCURRENTFONT()
+	LOADFONT "smalfont.bmp", 1
+	LOADFONT "menufont.bmp", 2
+	LOADFONT "buttonfont.bmp", 3
+
+	//OPENFILE(1, "testStatus.txt", -1)
+
+	state = 5
+
+	WHILE quit = 0
+
+		IF state = 1
+			// Intro
+		ENDIF
+
+		IF state = 2
+
+			SETFONT 2
+
+			// Game Menu
+			GETFONTSIZE fontX, fontY
+
+			newGameText$ = "NEW GAME"
+			textLen = LEN(newGameText$)
+			PRINT newGameText$, ((screenWidth / 2) - ((textLen * fontX) / 2)), 400
+
+			IF BOXCOLL(mx, my, 16, 16, (((screenWidth / 2) - ((textLen * fontX) / 2)) - 3), 398, ((textLen * fontX) + 3), (fontY + 3)) AND b0 = 1
+				SLEEP 500
+				state = 3
+			ENDIF
+
+			optionsText$ = "OPTIONS"
+			textLen = LEN(optionsText$)
+			PRINT optionsText$, ((screenWidth / 2) - ((textLen * fontX) / 2)), 440
+			SHOWSCREEN
+
+			GOSUB mouse
+
+			IF b1 = 1
+				quit = 1
+			ENDIF
+
+		ENDIF
+
+		IF state = 3
+
+			SETFONT 2
+
+			// Game Menu
+			GETFONTSIZE fontX, fontY
+
+			newGameText$ = "LONG GAME"
+			textLen = LEN(newGameText$)
+			PRINT newGameText$, ((screenWidth / 2) - ((textLen * fontX) / 2)), 400
+
+			IF BOXCOLL(mx, my, 16, 16, (((screenWidth / 2) - ((textLen * fontX) / 2)) - 3), 398, ((textLen * fontX) + 3), (fontY + 3)) AND b0 = 1
+				SLEEP 500
+				gameType = 1
+				state = 4
+			ENDIF
+
+			optionsText$ = "SHORT GAME"
+			textLen = LEN(optionsText$)
+			PRINT optionsText$, ((screenWidth / 2) - ((textLen * fontX) / 2)), 440
+			SHOWSCREEN
+
+			GOSUB mouse
+
+			IF b1 = 1
+				quit = 1
+			ENDIF
+
+		ENDIF
+
+		IF state = 4
+			IF gameType = 1
+				PLAYMOVIE "aliens-short-game.mpg"
+				state = 5
+			ENDIF
+		ENDIF
+
+		IF state = 5
+
+			SETFONT 1
+
+			// Check if marine is dead
+			//nextMarine = checkDeath("marine")
+			//DEBUG "next marine: " + nextMarine + "\n"
+			IF marine[nextMarine].health <= 0 OR marine[nextMarine].isDead = TRUE
+				INC nextMarine
+			ENDIF
+
+
+			GOSUB topUI
+			GOSUB statusUI
+			GOSUB buttonUI
+			GOSUB bottomUI
+
+			// Show mouse
+			GOSUB mouse
+
+			SHOWSCREEN
+
+			IF marineTurn = 1
+
+				// If Aim button pressed
+				// Use FL Aim rules but make marine miss this turn.
+				IF BOXCOLL(mx, my, 16, 16, (buttonUIScreenWidth + (0 * 150)), 321, 145, 30) AND b0 = 1
+					SLEEP 250
+					b0 = 0
+
+					IF marine[nextMarine].action <> 2
+						marine[nextMarine].action = marine[nextMarine].action + 1
+						isAim = 1
+						mx = 400
+						my = 200
+
+						SETMOUSE mx, my
+					ELSE
+						// marine[nextMarine].action = marine[nextMarine].action - 1
+					ENDIF
+
+				ENDIF
+
+				// If Fire button pressed
+				IF BOXCOLL(mx, my, 16, 16, (buttonUIScreenWidth + (1 * 150)), 321, 145, 30) AND b0 = 1
+					SLEEP 250
+					b0 = 0
+
+					IF marine[nextMarine].action <> 2
+						// Removing extra marine action
+						//marine[nextMarine].action = marine[nextMarine].action + 1
+						isFire = 1
+						mx = 400
+						my = 200
+
+						SETMOUSE mx, my
+					ELSE
+						// marine[nextMarine].action = marine[nextMarine].action - 1
+					ENDIF
+				ENDIF
+
+				// If Move button
+				IF BOXCOLL(mx, my, 16, 16, (buttonUIScreenWidth + (2 * 150)), 321, 145, 30) AND b0 = 1
+					SLEEP 250
+					b0 = 0
+
+					IF marine[nextMarine].action <> 2
+						marine[nextMarine].action = marine[nextMarine].action + 1
+						isMove = 1
+						mx = 400
+						my = 200
+
+						SETMOUSE mx, my
+					ELSE
+						// marine[nextMarine].action = marine[nextMarine].action - 1
+					ENDIF
+				ENDIF
+
+				// If End Turn button
+				IF BOXCOLL(mx, my, 16, 16, (buttonUIScreenWidth + (3 * 150)), 321, 145, 30) AND b0 = 1
+					SLEEP 250
+					b0 = 0
+
+					IF marine[nextMarine].action = 0
+						FOR mt = 0 TO (LEN(marine) - 1)
+							marine[mt].action = 1
+						NEXT
+					ELSEIF marine[nextMarine].action = 1
+						FOR mt = 0 TO (LEN(marine) - 1)
+							marine[mt].action = 0
+							marine[mt].turn = 1
+						NEXT
+
+						FOR mt = 0 TO (LEN(alien) - 1)
+							alien[mt].action = 1
+							alien[mt].turn = 1
+						NEXT
+
+						marineTurn = 0
+					ENDIF
+				ENDIF
+
+				// If Next button
+				IF BOXCOLL(mx, my, 16, 16, (buttonUIScreenWidth + (4 * 150)), 321, 145, 30) AND b0 = 1
+					SLEEP 250
+					b0 = 0
+					isNext = 1
+				ENDIF
+
+				IF isAim = 1
+					GOSUB limitMouseMove
+					marine[nextMarine].status$ = "AIMING"
+
+					IF b0 = 1
+						GETSPRITESIZE 12, mapWidth, mapHeight
+						tempMx = (mx - 100) / mapWidth
+						tempMx = INTEGER(tempMx)
+
+						tempMy = (my - 25) / mapWidth
+						tempMy = INTEGER(tempMy)
+
+						marine[nextMarine].alienAimedX = tempMy
+						marine[nextMarine].alienAimedY = tempMx
+
+						FOR aa = 0 TO (LEN(alien) - 1)
+							IF alien[aa].tileX = tempMy AND alien[aa].tileY = tempMx
+								marine[nextMarine].aimedTarget = alien[aa].id
+								tempTarget = nextAlien
+								nextAlien = alien[aa].id
+
+								isAimed = 1
+								BREAK
+							ENDIF
+						NEXT
+
+						IF isAimed = 1
+							GOSUB showTarget
+						ELSE
+							b1 = 0
+							SLEEP 200
+							marine[nextMarine].action = marine[nextMarine].action - 1
+						ENDIF
+
+						isAim = 0
+
+					ELSEIF b1 = 1
+						b1 = 0
+						SLEEP 200
+						isAim = 0
+						marine[nextMarine].action = marine[nextMarine].action - 1
+					ELSE
+
+					ENDIF // Mouse button with Aiming
+				ENDIF // isAim
+
+				IF isFire = 1
+					IF marine[nextMarine].aimedTarget = -1
+						GOSUB limitMouseMove
+					ENDIF
+
+					marine[nextMarine].status$ = "ATTACKING"
+
+					IF b0 = 1
+						IF marine[nextMarine].aimedTarget = -1
+							GETSPRITESIZE 12, mapWidth, mapHeight
+							tempMx = (mx - 100) / mapWidth
+							tempMx = INTEGER(tempMx)
+
+							tempMy = (my - 25) / mapWidth
+							tempMy = INTEGER(tempMy)
+
+							marine[nextMarine].alienFireX = tempMy
+							marine[nextMarine].alienFireY = tempMx
+
+							isUnaimed = 1
+
+							FOR aa = 0 TO (LEN(alien) - 1)
+								IF alien[aa].tileX = tempMy AND alien[aa].tileY = tempMx
+									marine[nextMarine].target = alien[aa].id
+									tempTarget = nextAlien
+									nextAlien = alien[aa].id
+									BREAK
+								ENDIF
+							NEXT
+
+							GOSUB showTarget
+
+							checkRange(marine[nextMarine].tileX, marine[nextMarine].tileY, alien[nextAlien].tileX, alien[nextAlien].tileY)
+
+							isUnaimed = 0
+						ENDIF
+
+						// GOSUB showTarget
+
+						marineGunSFX(marine[nextMarine].id)
+
+						IF marine[nextMarine].aimedTarget <> -1
+							tempTarget = nextAlien
+							nextAlien = marine[nextMarine].aimedTarget
+
+							checkRange(marine[nextMarine].tileX, marine[nextMarine].tileY, alien[nextAlien].tileX, alien[nextAlien].tileY)
+
+							//DEBUG "target: "+marine[nextMarine].aimedTarget+"\n"
+							//DEBUG "range: "+targetRange+"\n"
+						ENDIF
+
+						marine[nextMarine].success = 0
+						alien[nextAlien].success = 0
+						success = 0
+
+						ALLOWESCAPE FALSE
+						IF alien[nextAlien].health <= 0
+							BREAK
+						ENDIF
+
+						// Marine attacks
+						marine[nextMarine].turn = 1
+						alien[nextAlien].turn = 0
+
+						DEBUG "para time: " + marine[nextMarine].paralyzedTime + "\n"
+
+						// Check for paralysis
+						IF marine[nextMarine].paralyzedTime <= roundCount AND marine[nextMarine].paralyzedTime <> -1
+							//PRINT "Marine has " + (roundCount - marine[nextMarine].paralyzedTime) + " rounds left", 100, statusUIY
+							updateStatus("Marine has " + (roundCount - marine[nextMarine].paralyzedTime) + " rounds left")
+
+							GOSUB topUI
+							GOSUB statusUI
+							GOSUB buttonUI
+							GOSUB bottomUI
+							SHOWSCREEN
+							SLEEP 2500
+						ENDIF
+
+						IF marine[nextMarine].paralyzedTime > roundCount
+							marine[nextMarine].paralyzedTime = -1
+							marine[nextMarine].health = 0
+							//PRINT "Marine is captured for the hive", 100, statusUIY
+							updateStatus("Marine is captured for the hive")
+
+							GOSUB topUI
+							GOSUB statusUI
+							GOSUB buttonUI
+							GOSUB bottomUI
+							SHOWSCREEN
+							SLEEP 2500
+							BREAK
+						ENDIF
+
+						// Check for acid splash damage
+						IF marine[nextMarine].acidSplashDamage > 0
+							marine[nextMarine].acidSplashDamage = MOD(marine[nextMarine].acidSplashDamage, 2)
+
+							IF marine[nextMarine].acidSplashDamage <= 0
+								marine[nextMarine].acidSplashDamage = 0
+							ELSE
+								success = 0
+
+								FOR i = 0 TO (marine[nextMarine].acidSplashDamage - 1)
+									result = (RND(5) + 1)
+
+									IF result = 6
+										success = success + 1
+									ENDIF
+								NEXT
+
+								IF success > 0
+
+									//PRINT "Marine suffers " + success + " acid damage", 100, statusUIY
+									updateStatus("Marine suffers " + success + " acid damage")
+									marine[nextMarine].health = marine[nextMarine].health - success
+
+									IF marine[nextMarine].armorRating > 0
+										marine[nextMarine].armorRating = marine[nextMarine].armorRating - success
+									ENDIF
+								ELSE
+									//PRINT "Acid oxidises and marine suffers no damage", 100, statusUIY
+									updateStatus("Acid oxidises and marine suffers no damage")
+								ENDIF
+
+								GOSUB topUI
+								GOSUB statusUI
+								GOSUB buttonUI
+								GOSUB bottomUI
+								SLEEP 2500
+							ENDIF
+						ELSE
+							marine[nextMarine].acidSplashDamage = 0
+						ENDIF
+
+						IF marine[nextMarine].weapon$ = "M56A2 Smart Gun"
+							// Full Auto fire includes (+ 2 modification)
+
+							//marine[nextMarine].stress = marine[nextMarine].stress + 1
+							skillModification = skillModification + 2
+						ENDIF
+
+						SkillDiceRoll(marine[nextMarine].agility, marine[nextMarine].rangedCombat, marine[nextMarine].stress, marine[nextMarine].weaponBonus, skillModification, marine[nextMarine].weaponSpecialisation)
+						marine[nextMarine].success = success
+
+						IF marine[nextMarine].weapon$ = "M240 Incinerator Unit" AND marine[nextMarine].success > 0
+							success = 0
+							FireIntensityDieRoll(marine[nextMarine].weaponFireIntensity)
+							//PRINT success + " successes of fire damage", 100, statusUIY + 20
+							updateStatus(success + " successes of fire damage")
+
+							// Take into account that if the fire succeeds then target is "on fire"
+							IF success > 0
+								alien[nextAlien].isOnFire = 1
+
+								IF alien[nextAlien].alreadyOnFire = 0
+									alien[nextAlien].fireRoundCount = roundCount
+									alien[nextAlien].alreadyOnFire = 1
+								ENDIF
+
+								//PRINT "alien is on fire", 100, statusUIY + 40
+								updateStatus("Alien(" + alien[nextAlien].id + ") is on fire")
+
+								// Might as well add the fire damage success to marine's success
+								marine[nextMarine].success = marine[nextMarine].success + success
+
+								alien[nextAlien].fireIntensityDamage = marine[nextMarine].weaponFireIntensity
+							ELSE
+								//PRINT "alien is not on fire", 100, statusUIY + 40
+								updateStatus("Alien(" + alien[nextAlien].id + ") is not on fire")
+							ENDIF
+						ENDIF
+
+						//PRINT marine[nextMarine].name$ + " attacks with " + marine[nextMarine].success + " successes", 100, statusUIY
+						updateStatus(marine[nextMarine].name$ + " attacks with " + marine[nextMarine].success + " successes")
+
+						GOSUB topUI
+						GOSUB statusUI
+						GOSUB buttonUI
+						GOSUB bottomUI
+						SHOWSCREEN
+						SLEEP 2500
+
+
+						IF marine[nextMarine].success > 0
+							IF marine[nextMarine].success > 1
+								//IF marine.weapon$ = "M240 Incinerator Unit" AND success > 0
+								//	marine.damageThisRound = marine.weaponDamage + (marine.success - 1)
+								//ELSE
+									marine[nextMarine].damageThisRound = marine[nextMarine].weaponDamage + (marine[nextMarine].success - 1)
+								//ENDIF
+
+								//PRINT marine[nextMarine].name$ + " damage is " + marine[nextMarine].damageThisRound, 100, statusUIY
+								updateStatus(marine[nextMarine].name$ + " damage is " + marine[nextMarine].damageThisRound)
+
+								GOSUB topUI
+								GOSUB statusUI
+								GOSUB buttonUI
+								GOSUB bottomUI
+								SHOWSCREEN
+								SLEEP 2500
+							ELSE
+								marine[nextMarine].damageThisRound = marine[nextMarine].weaponDamage
+								//PRINT marine[nextMarine].name$ + " damage is " + marine[nextMarine].damageThisRound, 100, statusUIY
+								updateStatus(marine[nextMarine].name$ + " damage is " + marine[nextMarine].damageThisRound)
+
+								GOSUB topUI
+								GOSUB statusUI
+								GOSUB buttonUI
+								GOSUB bottomUI
+								SHOWSCREEN
+								SLEEP 2500
+							ENDIF
+
+							DamageReductionDieRoll(alien[nextAlien].armorRating, "marine")
+							//PRINT alien[nextAlien].success + " successes <- alien DR roll vs " + marine[nextMarine].weaponDamage, 100, statusUIY
+							updateStatus(alien[nextAlien].success + " successes <- alien DR roll vs " + marine[nextMarine].weaponDamage)
+
+							GOSUB topUI
+							GOSUB statusUI
+							GOSUB buttonUI
+							GOSUB bottomUI
+							SHOWSCREEN
+							SLEEP 2500
+
+							IF alien[nextAlien].success > 0
+								IF (marine[nextMarine].damageThisRound - alien[nextAlien].success) > 0
+									alien[nextAlien].health = alien[nextAlien].health - (marine[nextMarine].damageThisRound - alien[nextAlien].success)
+									//PRINT "Alien health is " + alien[nextAlien].health, 100, statusUIY
+									updateStatus("Alien(" + alien[nextAlien].id + ") health is " + alien[nextAlien].health)
+
+									GOSUB topUI
+									GOSUB statusUI
+									GOSUB buttonUI
+									GOSUB bottomUI
+									SHOWSCREEN
+								ELSE
+									//PRINT "Alien shrugs off the attack", 100, statusUIY
+									updateStatus("Alien(" + alien[nextAlien].id + ") shrugs off the attack")
+									GOSUB topUI
+									GOSUB statusUI
+									GOSUB buttonUI
+									GOSUB bottomUI
+									SHOWSCREEN
+								ENDIF
+
+								SLEEP 2500
+							ELSE
+								alien[nextAlien].health = alien[nextAlien].health - marine[nextMarine].damageThisRound
+								//PRINT "Alien health is " + alien[nextAlien].health, 100, statusUIY
+								updateStatus("Alien(" + alien[nextAlien].id + ") health is " + alien[nextAlien].health)
+
+								GOSUB topUI
+								GOSUB statusUI
+								GOSUB buttonUI
+								GOSUB bottomUI
+								SHOWSCREEN
+							ENDIF
+
+							SLEEP 2500
+						ELSE
+							//PRINT marine[nextMarine].name$ + " misses", 100, statusUIY
+							updateStatus(marine[nextMarine].name$ + " misses")
+
+							GOSUB topUI
+							GOSUB statusUI
+							GOSUB buttonUI
+							GOSUB bottomUI
+							SHOWSCREEN
+							SLEEP 2500
+						ENDIF
+
+						IF alien[nextAlien].health <= 0
+							//PRINT "Alien is dead", 100, statusUIY
+							updateStatus("Alien(" + alien[nextAlien].id + ") is dead")
+							GOSUB topUI
+							GOSUB statusUI
+							GOSUB buttonUI
+							GOSUB bottomUI
+							SHOWSCREEN
+							SLEEP 2500
+
+							GOSUB alienDeadSFX
+
+							BREAK
+							ALLOWESCAPE TRUE
+						ENDIF
+
+						IF alien[nextAlien].health <= 0
+							BREAK
+						ENDIF
+
+						IF marine[nextMarine].aimedTarget <> -1
+							nextAlien = tempTarget
+							marine[nextMarine].aimedTarget = -1
+						ENDIF
+
+						IF marine[nextMarine].aimedTarget = -1
+							nextAlien = tempTarget
+							marine[nextMarine].target = -1
+						ENDIF
+
+						marine[nextMarine].action = marine[nextMarine].action + 1
+
+						nextMarine = nextMarine + 1
+						IF nextMarine = 9
+							nextMarine = 0
+						ENDIF
+						skillModification = 0
+						isFire = 0
+
+					ELSEIF b1 = 1
+						b1 = 0
+						SLEEP 200
+						isFire = 0
+						marine[nextMarine].action = marine[nextMarine].action - 1
+					ELSE
+
+					ENDIF // Mouse button pressed on fire
+				ELSE
+					marine[nextMarine].status$ = "IDLE"
+				ENDIF // isFire
+
+				// FOR LOOP HERE TO FIND NEXT MARINE WITH ACTIONS AVAILABLE
+				IF isNext = 1
+					isNext = 0
+
+					IF nextMarine = 9
+						nextMarine = 0
+					ELSE
+						nextMarine = nextMarine + 1
+					ENDIF
+
+					FOR nm = nextMarine TO (8 + nextMarine)
+						IF nm = 9
+							nm = 0
+						ENDIF
+
+						IF marine[nm].action <> 2
+							nextMarine = nm
+							BREAK
+						ELSE
+							IF totalTeamCount = 9
+								totalTeamCount = 0
+								marineTurn = 0
+								nextMarine = nm
+								GOSUB roundOverMarineSFX
+								BREAK
+							ELSE
+								totalTeamCount = totalTeamCount + 1
+							ENDIF
+						ENDIF
+					NEXT
+				ELSE
+					marine[nextMarine].status$ = "IDLE"
+				ENDIF
+
+				// Restrict mouse movement to map area
+				IF isMove = 1
+					GOSUB limitMouseMove
+
+					marine[nextMarine].status$ = "MOVING"
+
+					IF b0 = 1
+						GETSPRITESIZE 12, mapWidth, mapHeight
+						tempMx = (mx - 100) / mapWidth
+						tempMx = INTEGER(tempMx)
+
+						tempMy = (my - 25) / mapWidth
+						tempMy = INTEGER(tempMy)
+
+						// Check if square is occupied by a marine
+						FOR checkSquare = 0 TO 8
+							IF marine[checkSquare].tileX = tempMy AND marine[checkSquare].tileY = tempMx
+								isMarineOccupied = 1
+								BREAK
+							ELSE
+								isMarineOccupied = 0
+							ENDIF
+						NEXT
+
+						// Check if square is occupied by an alien
+						IF alien[nextAlien].tileX = tempMy AND alien[nextAlien].tileY = tempMx
+							isAlienOccupied = 1
+						ELSE
+							isAlienOccupied = 0
+						ENDIF
+
+						// Check if topgrid has impassable area
+						IF topGrid[tempMy][tempMx] = 9
+							isImpassable = 1
+						ENDIF
+
+						IF isMarineOccupied = 0 AND isAlienOccupied = 0 AND isImpassable = 0
+							IF(marine[nextMarine].tileX - tempMy = -1 OR marine[nextMarine].tileX - tempMy = 1 OR marine[nextMarine].tileX - tempMy = 0) AND (marine[nextMarine].tileY - tempMx = -1 OR marine[nextMarine].tileY - tempMx = 1 OR marine[nextMarine].tileY - tempMx = 0)
+								marine[nextMarine].tileX = tempMy
+								marine[nextMarine].tileY = tempMx
+								isMove = 0
+								isNext = 1
+							ENDIF
+						ELSE
+							// change mouse pointer too?
+							isMarineOccupied = 0
+							isAlienOccupied = 0
+							isImpassable = 0
+						ENDIF
+					ELSEIF b1 = 1
+						b1 = 0
+						SLEEP 200
+						isMove = 0
+						marine[nextMarine].action = marine[nextMarine].action - 1
+
+					ELSE
+
+					ENDIF
+
+					PRINT "mx = " + tempMx, 100, 300
+					PRINT "my = " + tempMy, 200, 300
+				ELSE
+					// marine[nextMarine].status$ = "IDLE"
+				ENDIF
+			ENDIF // MarineTurn = 1 (Marine's turn)
+
+
+			IF marineTurn = 0
+				GOSUB topUI
+				GOSUB statusUI
+				GOSUB buttonUI
+				GOSUB bottomUI
+				SHOWSCREEN
+				SLEEP 12 // Had to reduce the sleep here otherwise the alien doesn't flash
+
+				alienTurnDelay = alienTurnDelay - 1
+
+				IF alienTurnDelay = 0
+				
+					// Check to see if alien has a target
+					IF alien[nextAlien].target = -1
+						// Scan area to find nearest marine
+						DEBUG "Scanning for marine"+"\n"
+						GOSUB scanForMarine
+						
+					ENDIF
+					
+					DEBUG "Marine found: "+alien[nextAlien].target+"\n"
+
+					FOR a = 0 TO (alien[nextAlien].speed - 1)
+
+						// Alien Turn
+						//marine[nextMarine].turn = 0
+						//alien[nextAlien].turn = 1
+
+						// Check if marine is dead
+						nextMarine = 0 // A quick shortcut to force the next marine to be the first one
+						IF marine[nextMarine].health <= 0
+							IF nextMarine = 9
+								nextMarine = 0
+							ELSE
+								INC nextMarine
+							ENDIF
+						ENDIF
+
+						// Before Alien attacks, check for fire damage
+						IF alien[nextAlien].isOnFire = 1 AND roundCount > alien[nextAlien].fireRoundCount AND a = 0
+
+							success = 0
+							FireIntensityDieRoll(alien[nextAlien].fireIntensityDamage)
+
+							IF success = 0
+								alien[nextAlien].isOnFire = 0
+								alien[nextAlien].alreadyOnFire = 0
+								alien[nextAlien].fireRoundCount = 0
+								//PRINT "alien is not on fire", 100, statusUIY
+								updateStatus("Alien(" + alien[nextAlien].id + ") is not on fire")
+
+								GOSUB topUI
+								GOSUB statusUI
+								GOSUB buttonUI
+								GOSUB bottomUI
+								SHOWSCREEN
+								SLEEP 2500
+							ELSE
+								alien[nextAlien].health = alien[nextAlien].health - success
+								alien[nextAlien].fireIntensityDamage = alien[nextAlien].fireIntensityDamage + 1
+								//PRINT "Alien takes fire damage of " + success, 100, statusUIY
+								updateStatus("Alien(" + alien[nextAlien].id + ") takes fire damage of " + success)
+
+								GOSUB topUI
+								GOSUB statusUI
+								GOSUB buttonUI
+								GOSUB bottomUI
+								SHOWSCREEN
+								SLEEP 2500
+
+								IF alien[nextAlien].health <= 0
+									//PRINT "Alien has succumed to fire", 100, statusUIY
+									updateStatus("Alien has succumed to fire")
+									//PRINT "Alien dies", 100, statusUIY + 20
+									updateStatus("Alien dies")
+
+									GOSUB topUI
+									GOSUB statusUI
+									GOSUB buttonUI
+									GOSUB bottomUI
+									SHOWSCREEN
+									SLEEP 2500
+									BREAK
+								ENDIF
+							ENDIF
+
+						ENDIF
+
+						// Double check if alien is dead <- not working properly
+						IF alien[nextAlien].health <= 0
+							BREAK
+						ENDIF
+
+						// check for range and movement here
+
+						//AlienActionDieRoll()
+
+						alien[nextAlien].attack = 4
+
+						IF alien[nextAlien].attack = 1
+
+							marine[alien[nextAlien].target].stress = marine[alien[nextAlien].target].stress + 1
+							PanicDiceRoll(marine[alien[nextAlien].target].stress)
+
+							GOSUB topUI
+							GOSUB statusUI
+							GOSUB buttonUI
+							GOSUB bottomUI
+							SHOWSCREEN
+							SLEEP 2500
+
+						ENDIF
+
+						IF alien[nextAlien].attack = 2
+							marine[alien[nextAlien].target].health = marine[alien[nextAlien].target].health - 1
+							IF marine[alien[nextAlien].target].health <= 0
+								marine[alien[nextAlien].target].isDead = TRUE
+
+								marineDeadSFX(marine[alien[nextAlien].target].id)
+
+							ENDIF
+							//PRINT "After the surprise " + marine[nextMarine].name$ + " is: " + marine[nextMarine].health, 100, statusUIY
+							updateStatus("After the surprise attack " + marine[alien[nextAlien].target].name$ +"'s health is: " + marine[alien[nextAlien].target].health)
+							marine[alien[nextAlien].target].stress = marine[alien[nextAlien].target].stress + 1
+							PanicDiceRoll(marine[alien[nextAlien].target].stress)
+
+							GOSUB topUI
+							GOSUB statusUI
+							GOSUB buttonUI
+							GOSUB bottomUI
+							SHOWSCREEN
+							SLEEP 2500
+						ENDIF
+
+						IF alien[nextAlien].attack = 3
+							// Alien attacks
+
+							SkillDiceRoll(alien[nextAlien].attackDie)
+							alien[nextAlien].success = success
+							//PRINT "Alien attacks with " + alien[nextAlien].success + " successes", 100, statusUIY
+							updateStatus("Alien(" + alien[nextAlien].id + ") attacks with " + alien[nextAlien].success + " successes")
+
+							GOSUB topUI
+							GOSUB statusUI
+							GOSUB buttonUI
+							GOSUB bottomUI
+							SHOWSCREEN
+							SLEEP 2500
+
+
+							IF alien[nextAlien].success > 0
+								IF alien[nextAlien].success > 1
+									alien[nextAlien].damageThisRound = alien[nextAlien].damage + (alien[nextAlien].success - 1)
+									//PRINT "alien damage is " + alien[nextAlien].damageThisRound, 100, statusUIY
+									updateStatus("Alien(" + alien[nextAlien].id + ") damage is " + alien[nextAlien].damageThisRound)
+									marine[alien[nextAlien].target].stress = marine[alien[nextAlien].target].stress + 1
+
+									GOSUB topUI
+									GOSUB statusUI
+									GOSUB buttonUI
+									GOSUB bottomUI
+									SHOWSCREEN
+									SLEEP 2500
+								ELSE
+									alien[nextAlien].damageThisRound = alien[nextAlien].damage
+									//PRINT "alien damage is " + alien[nextAlien].damageThisRound, 100, statusUIY
+									updateStatus("Alien(" + alien[nextAlien].id + ") damage is " + alien[nextAlien].damageThisRound)
+
+									GOSUB topUI
+									GOSUB statusUI
+									GOSUB buttonUI
+									GOSUB bottomUI
+									SHOWSCREEN
+									SLEEP 2500
+								ENDIF
+								DamageReductionDieRoll(marine[alien[nextAlien].target].armorRating, "alien")
+								//PRINT marine[nextMarine].success + " successes <- " + marine[nextMarine].name$ + " DR roll vs " + alien[nextAlien].damage, 100, statusUIY
+								updateStatus(marine[alien[nextAlien].target].success + " successes <- " + marine[alien[nextAlien].target].name$ + " damage reduction roll vs alien damage of: " + alien[nextAlien].damage)
+
+								GOSUB topUI
+								GOSUB statusUI
+								GOSUB buttonUI
+								GOSUB bottomUI
+								SHOWSCREEN
+								SLEEP 2500
+
+								IF marine[alien[nextAlien].target].success > 0
+									IF (alien[nextAlien].damageThisRound - marine[alien[nextAlien].target].success) > 0
+										marine[alien[nextAlien].target].health = marine[alien[nextAlien].target].health - (alien[nextAlien].damageThisRound - marine[alien[nextAlien].target].success)
+										IF marine[alien[nextAlien].target].health <= 0
+											marine[alien[nextAlien].target].isDead = TRUE
+
+											marineDeadSFX(marine[alien[nextAlien].target].id)
+										ENDIF
+										//PRINT marine[nextMarine].name$ + " health is " + marine[nextMarine].health, 100, statusUIY
+										updateStatus(marine[alien[nextAlien].target].name$ + "'s health is " + marine[alien[nextAlien].target].health)
+
+										GOSUB topUI
+										GOSUB statusUI
+										GOSUB buttonUI
+										GOSUB bottomUI
+										SHOWSCREEN
+										SLEEP 2500
+									ELSE
+										//PRINT marine[nextMarine].name$ + " shrugs off the attacK", 100, statusUIY
+										updateStatus(marine[alien[nextAlien].target].name$ + " shrugs off the attacK")
+
+										GOSUB topUI
+										GOSUB statusUI
+										GOSUB buttonUI
+										GOSUB bottomUI
+										SHOWSCREEN
+										SLEEP 2500
+									ENDIF
+								ELSE
+									marine[alien[nextAlien].target].health = marine[alien[nextAlien].target].health - alien[nextAlien].damageThisRound
+									IF marine[alien[nextAlien].target].health <= 0
+										marine[alien[nextAlien].target].isDead = TRUE
+
+										marineDeadSFX(marine[alien[nextAlien].target].id)
+									ENDIF
+
+									//PRINT marine[nextMarine].name$ + " health is " + marine[nextMarine].health, 100, statusUIY
+									updateStatus(marine[alien[nextAlien].target].name$ + "'s health is " + marine[alien[nextAlien].target].health)
+
+									GOSUB topUI
+									GOSUB statusUI
+									GOSUB buttonUI
+									GOSUB bottomUI
+									SHOWSCREEN
+									SLEEP 2500
+								ENDIF
+							ELSE
+								//PRINT "Alien misses", 100, statusUIY
+								updateStatus("Alien(" + alien[nextAlien].id + ") misses")
+
+								GOSUB topUI
+								GOSUB statusUI
+								GOSUB buttonUI
+								GOSUB bottomUI
+								SHOWSCREEN
+								SLEEP 2500
+							ENDIF
+
+						ENDIF
+
+						IF alien[nextAlien].attack = 4
+							// marine[nextMarine].isCaptured = 0
+							success = 0
+
+							FOR i = 0 TO 11
+								result = (RND(5) + 1)
+
+								IF result = 6
+									success = success + 1
+									BREAK
+								ENDIF
+							NEXT
+
+							IF success > 0
+								marine[alien[nextAlien].target].isCaptured = 1
+							ENDIF
+
+							IF marine[alien[nextAlien].target].isCaptured = 1
+								marine[alien[nextAlien].target].health = marine[alien[nextAlien].target].health - 1
+								IF marine[alien[nextAlien].target].health <= 0
+									marine[alien[nextAlien].target].isDead = TRUE
+
+									marineDeadSFX(marine[alien[nextAlien].target].id)
+								ENDIF
+
+								DEBUG "Roundcount: " + roundCount + "\n"
+								DEBUG "name: " + marine[alien[nextAlien].target].name$ + "\n"
+								DEBUG "h: " + marine[alien[nextAlien].target].health + "\n"
+
+								marine[alien[nextAlien].target].paralyzedTime = roundCount + success
+								//PRINT marine[nextMarine].name$ + " has " + success + " rounds left before capture", 100, statusUIY
+								updateStatus(marine[alien[nextAlien].target].name$ + " has " + success + " rounds left before capture")
+
+								GOSUB topUI
+								GOSUB statusUI
+								GOSUB buttonUI
+								GOSUB bottomUI
+								SHOWSCREEN
+								SLEEP 2500
+							ELSE
+								//PRINT marine[nextMarine].name$ + " avoids capture", 100, statusUIY
+								updateStatus(marine[alien[nextAlien].target].name$ + " avoids capture")
+
+								GOSUB topUI
+								GOSUB statusUI
+								GOSUB buttonUI
+								GOSUB bottomUI
+								SHOWSCREEN
+								SLEEP 2500
+							ENDIF
+
+						ENDIF
+
+						IF alien[nextAlien].attack = 5
+							success = 0
+							FOR i = 0 TO 11
+								result = (RND(5) + 1)
+
+								IF result = 6
+									success = success + 1
+								ENDIF
+							NEXT
+
+							IF success > 0
+								//PRINT marine[nextMarine].name$ + " suffers " + success + " splash damage", 100, statusUIY
+								updateStatus(marine[alien[nextAlien].target].name$ + " suffers " + success + " splash damage")
+								marine[alien[nextAlien].target].health = marine[alien[nextAlien].target].health - success
+								marine[alien[nextAlien].target].stress = marine[alien[nextAlien].target].stress + 1
+								IF marine[alien[nextAlien].target].health <= 0
+									marine[alien[nextAlien].target].isDead = TRUE
+
+									marineDeadSFX(marine[alien[nextAlien].target].id)
+								ENDIF
+								marine[alien[nextAlien].target].armorRating = marine[alien[nextAlien].target].armorRating - success
+								alien[nextAlien].health = 0
+								marine[alien[nextAlien].target].acidSplashDamage = success
+							ELSE
+								//PRINT "Acid misses " + marine[nextMarine].name$, 100, statusUIY
+								updateStatus("Acid misses " + marine[alien[nextAlien].target].name$)
+							ENDIF
+
+							GOSUB topUI
+							GOSUB statusUI
+							GOSUB buttonUI
+							GOSUB bottomUI
+							SHOWSCREEN
+							SLEEP 2500
+
+							alien[nextAlien].isDead = TRUE
+							GOSUB alienDeadSFX
+							success = 0
+							result = 0
+						ENDIF
+
+						IF alien[nextAlien].attack = 6
+							alien[nextAlien].isHeadbiteSuccess = 0
+
+							FOR i = 0 TO 9
+								result = (RND(5) + 1)
+
+								IF result = 6
+									alien[nextAlien].isHeadbiteSuccess = 1
+									BREAK
+								ENDIF
+							NEXT
+
+							IF alien[nextAlien].isHeadbiteSuccess = 1
+								//PRINT "Headbite successful.", 100, statusUIY
+								updateStatus("Headbite successful.")
+								//PRINT marine[nextMarine].name$ + " dies.", 100, statusUIY + 20
+								updateStatus(marine[alien[nextAlien].target].name$ + " dies.")
+
+								GOSUB topUI
+								GOSUB statusUI
+								GOSUB buttonUI
+								GOSUB bottomUI
+								SHOWSCREEN
+								SLEEP 2500
+
+								marine[alien[nextAlien].target].health = 0
+								marine[alien[nextAlien].target].isDead = TRUE
+								marineDeadSFX(marine[alien[nextAlien].target].id)
+							ELSE
+								//PRINT "Headbite not successful.", 100, statusUIY
+								updateStatus("Headbite not successful.")
+
+								GOSUB topUI
+								GOSUB statusUI
+								GOSUB buttonUI
+								GOSUB bottomUI
+								SHOWSCREEN
+								SLEEP 2500
+							ENDIF
+
+							result = 0
+						ENDIF
+					NEXT
+
+					alien[nextAlien].turn = 0
+					nextAlien = nextAlien + 1
+					alienTurnDelay = 90
+
+					IF nextAlien > (LEN(alien) - 1)
+						marine[nextMarine].turn = 1
+						nextAlien = 0
+						marineTurn = 1
+						INC roundCount
+
+						FOR i = 0 TO 8
+							marine[i].action = 0
+							marine[i].turn = 0
+							// DEBUG "marine: " + marine[i].id + "\n"
+						NEXT
+						//DEBUG "Round count\n"
+					ELSE
+						alien[nextAlien].turn = 1
+					ENDIF
+
+				ENDIF // AlienTurnDelay is 0
+
+			ENDIF // MarineTurn = 0 (Alien's turn)
+
+
+		ENDIF // state 5
+
+		IF b1 = 1 AND (isFire = 0 AND isMove = 0)
+			quit = 1
+		ENDIF
+
+	WEND
+
+	ALLOWESCAPE TRUE
+
+	PRINT success + " successes", 100, 100
+	PRINT panic + " <- panic", 100, 130
+
+	CLOSEFILE 1
+
+	SHOWSCREEN
+	MOUSEWAIT
+
+END
+
+SUB limitMouseMove:
+	IF mx <= 100
+		mx = 100
+	ENDIF
+
+	IF mx >= 680
+		mx = 680
+	ENDIF
+
+	IF my <= 22
+		my = 22
+	ENDIF
+
+	IF my >= 225
+		my = 225
+	ENDIF
+
+	SETMOUSE mx, my
+ENDSUB
+
+SUB showTarget:
+
+	LOCAL t = 0
+
+	FOR t = 0 TO 120
+
+		GOSUB topUI
+		GOSUB statusUI
+		GOSUB buttonUI
+		GOSUB bottomUI
+		SHOWSCREEN
+		SLEEP 12
+
+	NEXT
+
+	IF isAimed = 1
+		nextAlien = tempTarget
+		isAimed = 0
+	ENDIF
+
+ENDSUB
+
+SUB mouse:
+
+	MOUSESTATE mx, my, b0, b1
+	SETMOUSE mx, my
+	// PRINT mx + "," +  my, mx, my
+
+	//IF isAim = 1
+	//	DRAWSPRITE 19, mx, my
+	IF isFire = 1
+		DRAWSPRITE 20, mx, my
+	ELSE
+		DRAWSPRITE 18, mx, my
+	ENDIF
+
+ENDSUB
+
+SUB scanForMarine:
+
+	LOCAL alienX, alienY, foundLeft = FALSE, foundRight = FALSE
+	
+	// Look left
+	FOR alienY = alien[nextAlien].tileY TO 0 STEP -1		
+		
+		// Check one row above alien
+		IF topGrid[(alien[nextAlien].tileX - 1)][alienY] = 1 OR topGrid[(alien[nextAlien].tileX - 1)][alienY] = 2
+			DEBUG "Marine found at position topGrid["+(alien[nextAlien].tileX - 1)+"]["+alienY+"]\n"
+		
+			FOR targetMarine = 0 TO (LEN(marine) - 1)
+				IF marine[targetMarine].tileX = (alien[nextAlien].tileX - 1) AND marine[targetMarine].tileY = alienY
+					alien[nextAlien].target = targetMarine
+					DEBUG "Found 1 above - left\n"
+					DEBUG "Marine is: "+marine[targetMarine].name$+"\n"
+					foundLeft = TRUE
+					BREAK
+				ENDIF
+			NEXT
+			
+		ENDIF
+		
+		// if found on upper row
+		IF foundLeft = TRUE
+			BREAK
+		ENDIF
+		
+		
+		// Check same row on alien
+		IF topGrid[alien[nextAlien].tileX][alienY] = 1 OR topGrid[alien[nextAlien].tileX][alienY] = 2
+			DEBUG "Marine found at position topGrid["+alien[nextAlien].tileX+"]["+alienY+"]\n"
+		
+			FOR targetMarine = 0 TO (LEN(marine) - 1)
+				IF marine[targetMarine].tileX = alien[nextAlien].tileX AND marine[targetMarine].tileY = alienY
+					alien[nextAlien].target = targetMarine
+					DEBUG "Found 1 same row - left\n"
+					DEBUG "Marine is: "+marine[targetMarine].name$+"\n"
+					foundLeft = TRUE
+					BREAK
+				ELSE
+					DEBUG "no marine\n"
+				ENDIF
+			NEXT
+			
+		ENDIF
+		
+		// if found on same row
+		IF foundLeft = TRUE
+			BREAK
+		ENDIF
+		
+		// Check one row below alien
+		IF topGrid[(alien[nextAlien].tileX + 1)][alienY] = 1 OR topGrid[(alien[nextAlien].tileX + 1)][alienY] = 2
+			DEBUG "Marine found at position topGrid["+(alien[nextAlien].tileX + 1)+"]["+alienY+"]\n"
+		
+			FOR targetMarine = 0 TO (LEN(marine) - 1)
+				IF marine[targetMarine].tileX = (alien[nextAlien].tileX - 1) AND marine[targetMarine].tileY = alienY
+					alien[nextAlien].target = targetMarine
+					DEBUG "Found 1 below - left\n"
+					DEBUG "Marine is: "+marine[targetMarine].name$+"\n"
+					foundLeft = TRUE
+					BREAK
+				ENDIF
+			NEXT
+			
+		ENDIF
+		
+		// if found on lower row
+		IF foundLeft = TRUE
+			BREAK
+		ENDIF
+	NEXT
+	
+	// Look right
+	FOR alienY = alien[nextAlien].tileY TO 17 STEP 1
+		
+		// Check one row above alien
+		IF topGrid[(alien[nextAlien].tileX - 1)][alienY] = 1 OR topGrid[(alien[nextAlien].tileX - 1)][alienY] = 2
+		
+			FOR targetMarine = 0 TO (LEN(marine) - 1)
+				IF marine[targetMarine].tileX = (alien[nextAlien].tileX + 1) AND marine[targetMarine].tileY = alienY
+					alien[nextAlien].target = marine[targetMarine].id
+				ENDIF
+			NEXT
+			
+		ENDIF
+		
+		// Check same row on alien
+		IF topGrid[alien[nextAlien].tileX][alienY] = 1 OR topGrid[alien[nextAlien].tileX][alienY] = 2
+		
+			FOR targetMarine = 0 TO (LEN(marine) - 1)
+				IF marine[targetMarine].tileX = alien[nextAlien].tileX AND marine[targetMarine].tileY = alienY
+					alien[nextAlien].target = marine[targetMarine].id
+				ENDIF
+			NEXT
+			
+		ENDIF
+		
+		// Check one row below alien
+		IF topGrid[(alien[nextAlien].tileX + 1)][alienY] = 1 OR topGrid[(alien[nextAlien].tileX + 1)][alienY] = 2
+		
+			FOR targetMarine = 0 TO (LEN(marine) - 1)
+				IF marine[targetMarine].tileX = (alien[nextAlien].tileX - 1) AND marine[targetMarine].tileY = alienY
+					alien[nextAlien].target = marine[targetMarine].id
+				ENDIF
+			NEXT
+			
+		ENDIF
+	NEXT
+
+ENDSUB
+
+SUB topUI:
+
+	GETSPRITESIZE 12, mapWidth, mapHeight
+
+	LOCAL startingMx, startingMy, marineX, marineY, alienX, alienY
+
+	startingMy = screenWidth / 8
+	startingMx = 32
+
+	// Load background to level 1
+
+	DRAWSPRITE 17, mapWidth + startingMy - 32, mapHeight + startingMx - 32
+
+	// Bottom grid tiles
+
+	FOR mapX = 0 TO 5
+		FOR mapY = 0 TO 17
+
+			IF bottomGrid[mapX][mapY] = 1
+				DRAWSPRITE 12, (mapWidth * mapY) + startingMy, (mapHeight * mapX) + startingMx
+			ENDIF
+
+			IF bottomGrid[mapX][mapY] = 2
+				DRAWSPRITE 13, (mapWidth * mapY) + startingMy, (mapHeight * mapX) + startingMx
+			ENDIF
+
+		NEXT
+	NEXT
+
+	// Upper sprite tiles
+	// Marine
+	FOR marineTile = 0 TO 8
+		IF marine[marineTile].isDead = FALSE
+			IF marineTile = nextMarine
+				topGrid[marine[marineTile].tileX][marine[marineTile].tileY] = 2
+			ELSE
+				topGrid[marine[marineTile].tileX][marine[marineTile].tileY] = 1
+			ENDIF
+		ENDIF
+	NEXT
+
+	// Alien
+	FOR alienTile = 0 TO 2
+		IF alien[alienTile].isDead = FALSE
+			IF alienTile = nextAlien
+				topGrid[alien[alienTile].tileX][alien[alienTile].tileY] = 6
+			ELSE
+				topGrid[alien[alienTile].tileX][alien[alienTile].tileY] = 5
+			ENDIF
+		ELSE
+			topGrid[alien[alienTile].tileX][alien[alienTile].tileY] = 0
+		ENDIF
+	NEXT
+
+	// Adding impassable areas
+	topGrid[0][3] = 9
+	topGrid[0][9] = 9
+	topGrid[0][10] = 9
+	topGrid[0][11] = 9
+	topGrid[0][17] = 9
+
+	topGrid[2][5] = 9
+	topGrid[2][6] = 9
+	topGrid[2][14] = 9
+	topGrid[2][15] = 9
+	topGrid[2][16] = 9
+
+	topGrid[3][0] = 9
+	topGrid[3][4] = 9
+	topGrid[3][5] = 9
+	topGrid[3][6] = 9
+	topGrid[3][7] = 9
+	topGrid[3][9] = 9
+	topGrid[3][12] = 9
+	topGrid[3][14] = 9
+	topGrid[3][15] = 9
+	topGrid[3][16] = 9
+
+	topGrid[4][13] = 9
+	topGrid[4][14] = 9
+	topGrid[4][15] = 9
+	topGrid[4][16] = 9
+
+	topGrid[5][2] = 9
+	topGrid[5][12] = 9
+	topGrid[5][13] = 9
+	topGrid[5][14] = 9
+	topGrid[5][15] = 9
+	topGrid[5][17] = 9
+
+	FOR mapX = 0 TO 5
+		FOR mapY = 0 TO 17
+
+			FOR marineTile = 0 TO 8
+
+				IF topGrid[mapX][mapY] = 2
+					IF (marineTile = nextMarine AND (mapX = marine[nextMarine].tileX AND mapY = marine[nextMarine].tileY))
+						IF marineTurn = 1
+							IF marineFlashCount > 30 AND marineFlashCount <= 60
+								marineFlashCount = marineFlashCount - 1
+
+								// DEBUG marineFlashCount+"\n"
+
+								DRAWSPRITE 14, (mapWidth * mapY) + startingMy, (mapHeight * mapX) + startingMx
+								//DRAWANIM 16, 0, (mapWidth * mapY) + startingMy, (mapHeight * mapX) + startingMx
+							ELSEIF marineFlashCount > 0 AND marineFlashCount <= 30
+								marineFlashCount = marineFlashCount - 1
+								DRAWSPRITE 12, (mapWidth * mapY) + startingMy, (mapHeight * mapX) + startingMx
+								//DRAWANIM 16, 1, (mapWidth * mapY) + startingMy, (mapHeight * mapX) + startingMx
+							ELSE
+								marineFlashCount = 60
+							ENDIF
+						ELSE
+							DRAWSPRITE 14, (mapWidth * mapY) + startingMy, (mapHeight * mapX) + startingMx
+						ENDIF
+					ENDIF
+				ELSEIF topGrid[mapX][mapY] = 1
+					DRAWSPRITE 14, (mapWidth * mapY) + startingMy, (mapHeight * mapX) + startingMx
+				ENDIF
+
+			NEXT
+
+			IF isAimed = 1 OR isUnaimed = 1
+				FOR alienTile = 0 TO (LEN(alien) - 1)
+
+					// If alien is currently selected this is why only one alien flashes when selected with aim
+					IF topGrid[mapX][mapY] = 6
+
+						IF isAimed = 1
+							// DEBUG "aimedTarget: "+marine[nextMarine].aimedTarget+"\n"
+						ELSEIF isUnaimed = 1
+							// DEBUG "UnaimedTarget: "+marine[nextMarine].target+"\n"
+						ELSE
+
+						ENDIF
+
+						// DEBUG "mapx: "+alien[marine[nextMarine].aimedTarget].tileX+"\n"
+						// DEBUG "mapy: "+alien[marine[nextMarine].aimedTarget].tileY+"\n"
+
+
+						IF ((alienTile = marine[nextMarine].aimedTarget OR alienTile = marine[nextMarine].target) AND (mapX = alien[marine[nextMarine].aimedTarget].tileX AND mapY = alien[marine[nextMarine].aimedTarget].tileY))
+							IF marineTurn = 1
+								IF marineFlashCount > 30 AND marineFlashCount <= 60
+									marineFlashCount = marineFlashCount - 1
+
+									// DEBUG marineFlashCount+"\n"
+
+									DRAWSPRITE 15, (mapWidth * mapY) + startingMy, (mapHeight * mapX) + startingMx - 32
+								ELSEIF ((marineFlashCount > 0 AND marineFlashCount <= 30))
+									marineFlashCount = marineFlashCount - 1
+									DRAWSPRITE 12, (mapWidth * mapY) + startingMy, (mapHeight * mapX) + startingMx - 32
+								ELSE
+									marineFlashCount = 60
+								ENDIF
+							ELSE
+								DRAWSPRITE 15, (mapWidth * mapY) + startingMy, (mapHeight * mapX) + startingMx - 32
+							ENDIF
+						ENDIF
+					ELSEIF topGrid[mapX][mapY] = 5
+						DRAWSPRITE 15, (mapWidth * mapY) + startingMy, (mapHeight * mapX) + startingMx - 32
+					ENDIF
+
+				NEXT
+			ELSE
+				// Alien tiles
+				FOR alienTile = 0 TO (LEN(alien) - 1)
+
+					IF topGrid[mapX][mapY] = 6
+						IF (alienTile = nextAlien AND (mapX = alien[nextAlien].tileX AND mapY = alien[nextAlien].tileY))
+							IF marineTurn = 0
+								IF marineFlashCount > 30 AND marineFlashCount <= 60
+									marineFlashCount = marineFlashCount - 1
+
+									// DEBUG marineFlashCount+"\n"
+
+									DRAWSPRITE 15, (mapWidth * mapY) + startingMy, (mapHeight * mapX) + startingMx - 32
+								ELSEIF ((marineFlashCount > 0 AND marineFlashCount <= 30))
+									marineFlashCount = marineFlashCount - 1
+									DRAWSPRITE 12, (mapWidth * mapY) + startingMy, (mapHeight * mapX) + startingMx - 32
+								ELSE
+									marineFlashCount = 60
+								ENDIF
+							ELSE
+								DRAWSPRITE 15, (mapWidth * mapY) + startingMy, (mapHeight * mapX) + startingMx - 32
+							ENDIF
+						ENDIF
+					ELSEIF topGrid[mapX][mapY] = 5
+						DRAWSPRITE 15, (mapWidth * mapY) + startingMy, (mapHeight * mapX) + startingMx - 32
+					ENDIF
+
+				NEXT
+			ENDIF
+
+		NEXT
+	NEXT
+
+
+ENDSUB
+
+SUB buttonUI:
+
+	LOCAL startingX, startingY
+
+	startingX = screenWidth / 45
+
+	SETFONT 3
+
+	GETFONTSIZE fontX, fontY
+
+	IF marine[nextMarine].turn = 1
+		FOR wb = 0 TO 4
+			DRAWRECT ((startingX - 1) + 154 * wb), (320 - 1), 154, 39, RGB(255, 255, 255)
+		NEXT
+
+		FOR cb = 0 TO 4
+			IF cb = 0
+				DRAWRECT (startingX + (150 * cb)), 321, 150, 35, RGB(0, 180, 0)
+
+				textLen = LEN(aimButtonText$)
+				PRINT aimButtonText$, ((startingX + (150 / 2)) - ((fontX * textLen) / 2)), 330
+			ELSEIF cb = 1
+				DRAWRECT (startingX + (150 * cb) + (cb * 4)), 321, 150, 35, RGB(255, 0, 0)
+
+				textLen = LEN(fireButtonText$)
+				PRINT fireButtonText$, ((startingX + ((150 / 2) * 3) + (cb * 4)) - ((fontX * textLen) / 2)), 330
+			ELSEIF cb = 2
+				DRAWRECT (startingX + (150 * cb) + (cb * 4)), 321, 150, 35, RGB(0, 95, 0)
+
+				textLen = LEN(moveButtonText$)
+				PRINT moveButtonText$, ((startingX + ((150 / 2) * 5) + (cb * 4)) - ((fontX * textLen) / 2)), 330
+			ELSEIF cb = 3
+				DRAWRECT (startingX + (150 * cb) + (cb * 4)), 321, 150, 35, RGB(110, 110, 0)
+
+				textLen = LEN(endTurnButtonText$)
+				PRINT endTurnButtonText$, ((startingX + ((150 / 2) * 7) + (cb * 4)) - ((fontX * textLen) / 2)), 330
+			ELSEIF cb = 4
+				DRAWRECT (startingX + (150 * cb) + (cb * 4)), 321, 150, 35, RGB(0, 0, 120)
+
+				textLen = LEN(nextButtonText$)
+				PRINT nextButtonText$, ((startingX + ((150 / 2) * 9) + (cb * 4)) - ((fontX * textLen) / 2)), 330
+			ENDIF
+		NEXT
+
+	ELSEIF alien[nextAlien].turn = 1
+		FOR wb = 0 TO 4
+			DRAWRECT ((startingX - 1) + 154 * wb), (320 - 1), 154, 39, RGB(255, 255, 255)
+		NEXT
+
+		FOR cb = 0 TO 4
+			IF cb = 0
+				DRAWRECT (startingX + (150 * cb)), 321, 150, 35, RGB(0, 180, 0)
+
+				textLen = LEN(aimButtonText$)
+				PRINT aimButtonText$, ((startingX + (150 / 2)) - ((fontX * textLen) / 2)), 330
+			ELSEIF cb = 1
+				DRAWRECT (startingX + (150 * cb) + (cb * 4)), 321, 150, 35, RGB(255, 0, 0)
+
+				textLen = LEN(fireButtonText$)
+				PRINT fireButtonText$, ((startingX + ((150 / 2) * 3) + (cb * 4)) - ((fontX * textLen) / 2)), 330
+			ELSEIF cb = 2
+				DRAWRECT (startingX + (150 * cb) + (cb * 4)), 321, 150, 35, RGB(0, 95, 0)
+
+				textLen = LEN(moveButtonText$)
+				PRINT moveButtonText$, ((startingX + ((150 / 2) * 5) + (cb * 4)) - ((fontX * textLen) / 2)), 330
+			ELSEIF cb = 3
+				DRAWRECT (startingX + (150 * cb) + (cb * 4)), 321, 150, 35, RGB(110, 110, 0)
+
+				textLen = LEN(endTurnButtonText$)
+				PRINT endTurnButtonText$, ((startingX + ((150 / 2) * 7) + (cb * 4)) - ((fontX * textLen) / 2)), 330
+			ELSEIF cb = 4
+				DRAWRECT (startingX + (150 * cb) + (cb * 4)), 321, 150, 35, RGB(0, 0, 120)
+
+				textLen = LEN(nextButtonText$)
+				PRINT nextButtonText$, ((startingX + ((150 / 2) * 9) + (cb * 4)) - ((fontX * textLen) / 2)), 330
+			ENDIF
+		NEXT
+	ELSE
+		FOR wb = 0 TO 4
+			DRAWRECT ((startingX - 1) + 154 * wb), (320 - 1), 154, 39, RGB(255, 255, 255)
+		NEXT
+
+		FOR cb = 0 TO 4
+			IF cb = 0
+				DRAWRECT (startingX + (150 * cb)), 321, 150, 35, RGB(0, 180, 0)
+
+				textLen = LEN(aimButtonText$)
+				PRINT aimButtonText$, ((startingX + (150 / 2)) - ((fontX * textLen) / 2)), 330
+			ELSEIF cb = 1
+				DRAWRECT (startingX + (150 * cb) + (cb * 4)), 321, 150, 35, RGB(255, 0, 0)
+
+				textLen = LEN(fireButtonText$)
+				PRINT fireButtonText$, ((startingX + ((150 / 2) * 3) + (cb * 4)) - ((fontX * textLen) / 2)), 330
+			ELSEIF cb = 2
+				DRAWRECT (startingX + (150 * cb) + (cb * 4)), 321, 150, 35, RGB(0, 95, 0)
+
+				textLen = LEN(moveButtonText$)
+				PRINT moveButtonText$, ((startingX + ((150 / 2) * 5) + (cb * 4)) - ((fontX * textLen) / 2)), 330
+			ELSEIF cb = 3
+				DRAWRECT (startingX + (150 * cb) + (cb * 4)), 321, 150, 35, RGB(110, 110, 0)
+
+				textLen = LEN(endTurnButtonText$)
+				PRINT endTurnButtonText$, ((startingX + ((150 / 2) * 7) + (cb * 4)) - ((fontX * textLen) / 2)), 330
+			ELSEIF cb = 4
+				DRAWRECT (startingX + (150 * cb) + (cb * 4)), 321, 150, 35, RGB(0, 0, 120)
+
+				textLen = LEN(nextButtonText$)
+				PRINT nextButtonText$, ((startingX + ((150 / 2) * 9) + (cb * 4)) - ((fontX * textLen) / 2)), 330
+			ENDIF
+		NEXT
+	ENDIF
+
+	SETFONT 1
+
+ENDSUB
+
+SUB bottomUI:
+
+	LOCAL startingX, startingY, alienNameNum
+
+	startingX = screenWidth / 16
+
+	IF alien[nextAlien].turn = 1
+		alienNameNum = nextAlien + 1
+		DRAWSPRITE alien[nextAlien].imageNumber, startingX, 410
+		GETSPRITESIZE alien[nextAlien].imageNumber, spriteWidth, spriteHeight
+
+		PRINT "NAME: Alien (" + alienNameNum + ")", startingX + spriteWidth + 20, 410
+
+		IF alien[nextAlien].isOnFire = 1
+			IF alien[nextAlien].health <= 2
+				PRINT "CONDITION: Heavily Injured + [Fire] " + "(" + alien[nextAlien].health + ")", startingX + spriteWidth + 20, 430
+			ELSE
+				PRINT "CONDITION: O.K. [Fire] " + "(" + alien[nextAlien].health + ")", startingX + spriteWidth + 20, 430
+			ENDIF
+		ELSE
+			IF alien[nextAlien].health <= 2
+				PRINT "CONDITION: Heavily Injured " + "(" + alien[nextAlien].health + ")", startingX + spriteWidth + 20, 430
+			ELSE
+				PRINT "CONDITION: O.K. " + "(" + alien[nextAlien].health + ")", startingX + spriteWidth + 20, 430
+			ENDIF
+		ENDIF
+
+		IF alien[nextAlien].attack = 1
+			PRINT "ACTION: ASSESSING THE THREAT", startingX + spriteWidth + 20, 450
+		ELSEIF alien[nextAlien].attack = 2
+			PRINT "ACTION: SURPRISE ATTACK", startingX + spriteWidth + 20, 450
+		ELSEIF alien[nextAlien].attack = 3
+			PRINT "ACTION: ATTACKING", startingX + spriteWidth + 20, 450
+			PRINT "WEAPON: Claws/Teeth/Tail", startingX + spriteWidth + 20, 470
+		ELSEIF alien[nextAlien].attack = 4
+			PRINT "ACTION: CAPTURE FOR THE HIVE", startingX + spriteWidth + 20, 450
+			PRINT "WEAPON: N/A", startingX + spriteWidth + 20, 470
+		ELSEIF alien[nextAlien].attack = 5
+			PRINT "ACTION: DIE FOR THE QUEEN", startingX + spriteWidth + 20, 450
+			PRINT "WEAPON: Acid Spray", startingX + spriteWidth + 20, 470
+		ELSEIF alien[nextAlien].attack = 6
+			PRINT "ACTION: HEADBITE", startingX + spriteWidth + 20, 450
+			PRINT "WEAPON: Mouth", startingX + spriteWidth + 20, 470
+		ELSE
+			PRINT "ACTION:", startingX + spriteWidth + 20, 450
+			PRINT "WEAPON:", startingX + spriteWidth + 20, 470
+		ENDIF
+	ELSE
+		DRAWSPRITE marine[nextMarine].imageNumber, startingX, 410
+		GETSPRITESIZE marine[nextMarine].imageNumber, spriteWidth, spriteHeight
+
+		PRINT "NAME: " + marine[nextMarine].name$, startingX + spriteWidth + 20, 410
+
+		IF marine[nextMarine].acidSplashDamage > 0
+			IF marine[nextMarine].health <= 2
+				PRINT "CONDITION: Heavily Injured [Acid burn]" + "(" + marine[nextMarine].health + ")", startingX + spriteWidth + 20, 430
+			ELSE
+				PRINT "CONDITION: O.K. [Acid burn]" + "(" + marine[nextMarine].health + ")", startingX + spriteWidth + 20, 430
+			ENDIF
+		ELSE
+			IF marine[nextMarine].health <= 0
+				PRINT "CONDITION: Dead " + "(" + marine[nextMarine].health + ")", startingX + spriteWidth + 20, 430
+			ELSEIF marine[nextMarine].health <= 2
+				PRINT "CONDITION: Heavily Injured " + "(" + marine[nextMarine].health + ")", startingX + spriteWidth + 20, 430
+			ELSE
+				PRINT "CONDITION: O.K. " + "(" + marine[nextMarine].health + ")", startingX + spriteWidth + 20, 430
+			ENDIF
+		ENDIF
+
+		PRINT "ACTION: " + marine[nextMarine].status$, startingX + spriteWidth + 20, 450
+		PRINT "WEAPON: " + marine[nextMarine].weapon$, startingX + spriteWidth + 20, 470
+		PRINT "STRESS: " + marine[nextMarine].stress, startingX + spriteWidth + 20, 490
+		PRINT "PANIC STATUS: " + marine[nextMarine].panicStatus$, startingX + spriteWidth + 20, 510
+		// turn is temp for debugging
+		PRINT "TURN: " + marine[nextMarine].action, startingX + spriteWidth + 20, 530
+
+	ENDIF
+
+	// Overlay for bottom UI
+	DRAWSPRITE 11, 0, 360
+
+	PRINT "Round Count: " + roundCount, 50, 530
+
+ENDSUB
+
+SUB statusUI:
+	LOCAL newStatusUIY = statusUIY
+	LOCAL i, limit = 0
+
+	IF statusIndex <= 3
+		FOR i = 0 TO statusIndex
+			PRINT statusList$[i], 100, newStatusUIY + (20 * i)
+		NEXT
+	ELSE
+		FOR i = statusIndex - 3 TO statusIndex
+			// DEBUG "statusIndex: "+statusIndex+"\n"
+			// DEBUG "i: "+i+"\n"
+			PRINT statusList$[i], 100, newStatusUIY + (20 * limit)
+			IF limit = 4
+				limit = 0
+			ELSE
+				INC limit
+			ENDIF
+		NEXT
+	ENDIF
+
+ENDSUB
+
+SUB alienDeadSFX:
+	LOCAL result
+
+	result = (RND(5) + 1)
+
+	SELECT result
+
+		CASE 1
+			PLAYSOUND(0, 0, 1)
+
+		CASE 2
+			PLAYSOUND(1, 0, 1)
+
+		CASE 3
+			PLAYSOUND(2, 0, 1)
+
+		CASE 4
+			PLAYSOUND(3, 0, 1)
+
+		CASE 5
+			PLAYSOUND(4, 0, 1)
+
+		CASE 6
+			PLAYSOUND(5, 0, 1)
+
+	ENDSELECT
+
+ENDSUB
+
+SUB roundOverMarineSFX:
+
+	LOCAL result
+
+	result = (RND(4) + 1)
+
+	SELECT result
+
+		CASE 1
+			PLAYSOUND(8, 0, 1)
+
+		CASE 2
+			PLAYSOUND(9, 0, 1)
+
+		CASE 3
+			PLAYSOUND(10, 0, 1)
+
+		CASE 4
+			PLAYSOUND(11, 0, 1)
+
+		CASE 5
+			PLAYSOUND(12, 0, 1)
+
+	ENDSELECT
+
+ENDSUB
+
+FUNCTION checkRange: attackerX, attackerY, targetX, targetY
+
+	LOCAL totalX, totalY, totalH%
+
+	totalX = (attackerX - 1) - targetX
+	totalX = ABS(totalX) * ABS(totalX)
+
+	totalY = (attackerY - 1) - targetY
+	totalY = ABS(totalY) * ABS(totalY)
+
+	totalH% = totalX + totalY
+	totalH% = SQR(totalH)
+
+	IF totalH >= 7
+		targetRange = 4
+	ELSEIF totalH = 5 OR totalH = 6
+		targetRange = 3
+	ELSEIF totalH = 3 OR totalH = 4
+		targetRange = 2
+	ELSEIF totalH = 1 OR totalH = 2
+		targetRange = 1
+	ENDIF
+
+	IF targetRange > marine[nextMarine].weaponRange
+		targetRange = targetRange - marine[nextMarine].weaponRange
+
+		SELECT targetRange
+
+			CASE 1
+			CASE 2
+				skillModification = -1
+
+			CASE 3
+			CASE 4
+				skillModification = -2
+
+			CASE 5
+			CASE 6
+				skillModification = -3
+
+		ENDSELECT
+	ENDIF
+
+	//RETURN targetRange
+
+ENDFUNCTION
+
+FUNCTION marineDeadSFX: marineId
+
+	SELECT marineId
+
+		CASE 0
+			PLAYSOUND(7, 0, 1)
+
+		CASE 1
+			PLAYSOUND(7, 0, 1)
+
+		CASE 2
+			PLAYSOUND(7, 0, 1)
+
+		CASE 3
+			PLAYSOUND(7, 0, 1)
+
+		CASE 4
+			PLAYSOUND(7, 0, 1)
+
+		CASE 5
+			PLAYSOUND(7, 0, 1)
+
+		CASE 6
+			PLAYSOUND(6, 0, 1)
+
+		CASE 7
+			PLAYSOUND(7, 0, 1)
+
+		CASE 8
+			PLAYSOUND(6, 0, 1)
+
+	ENDSELECT
+
+ENDFUNCTION
+
+FUNCTION marineGunSFX: marineId
+
+	LOCAL result
+
+	result = (RND(1) + 1)
+
+	SELECT marineId
+
+		CASE 0
+			PLAYSOUND(14, 0, 1)
+
+		CASE 1
+			SELECT result
+
+				CASE 1
+					PLAYSOUND(17, 0, 1)
+
+				CASE 2
+					PLAYSOUND(18, 0, 1)
+
+			ENDSELECT
+
+		CASE 2
+			PLAYSOUND(13, 0, 1)
+
+		CASE 3
+			PLAYSOUND(13, 0, 1)
+
+		CASE 4
+			PLAYSOUND(13, 0, 1)
+
+		CASE 5
+			PLAYSOUND(14, 0, 1)
+
+		CASE 6
+			PLAYSOUND(14, 0, 1)
+
+		CASE 7
+			PLAYSOUND(15, 0, 1)
+
+		CASE 8
+			PLAYSOUND(16, 0, 1)
+
+	ENDSELECT
+
+ENDFUNCTION
+
+FUNCTION updateStatus: statusString$
+
+	statusList$[statusIndex] = statusString$
+	INC statusIndex
+	REDIM statusList$[statusIndex + 1]
+
+ENDFUNCTION
+
+FUNCTION AlienActionDieRoll:
+
+	LOCAL result
+
+	result = (RND(5) + 1)
+
+	SELECT result
+
+		CASE 1
+			//PRINT "Alien assesses the threat", 100, statusUIY
+			updateStatus("Alien(" + alien[nextAlien].id + ") assesses the threat")
+			alien[nextAlien].attack = 1
+
+		CASE 2
+			//PRINT "Alien launches a surprise attack", 100, statusUIY
+			updateStatus("Alien(" + alien[nextAlien].id + ") launches a surprise attack")
+			alien[nextAlien].attack = 2
+
+		CASE 3
+			//PRINT "All-out attack", 100, statusUIY
+			updateStatus("Alien(" + alien[nextAlien].id + "): All-out attack")
+			alien[nextAlien].attack = 3
+
+		CASE 4
+			//PRINT "Capture For Hive", 100, statusUIY
+			updateStatus("Alien(" + alien[nextAlien].id + "): Capture For Hive")
+			alien[nextAlien].attack = 4
+
+		CASE 5
+			//PRINT "Acid splash", 100, statusUIY
+			updateStatus("Alien(" + alien[nextAlien].id + "): Acid splash")
+			alien[nextAlien].attack = 5
+
+		CASE 6
+			//PRINT "Headbite", 100, statusUIY
+			updateStatus("Alien(" + alien[nextAlien].id + "): Headbite")
+			alien[nextAlien].attack = 6
+
+	ENDSELECT
+
+	GOSUB topUI
+	GOSUB statusUI
+	GOSUB buttonUI
+	GOSUB bottomUI
+
+	SHOWSCREEN
+	SLEEP 2500
+
+
+ENDFUNCTION
+
+FUNCTION DamageReductionDieRoll: armour, turn$
+
+	LOCAL result
+
+	IF turn$ = "marine"
+		IF marine[nextMarine].weaponArmPiercing = 1
+			armour = armour / 2
+		ENDIF
+
+		IF marine[nextMarine].weaponArmDoubled = 1
+			armour = armour * 2
+		ENDIF
+	ELSE
+		armour = armour / 2
+	ENDIF
+
+	alien[nextAlien].success = 0
+	marine[nextMarine].success = 0
+
+	FOR i = 0 TO (armour - 1)
+		result = (RND(5) + 1)
+
+		IF result = 6
+			IF turn$ = "marine"
+				alien[nextAlien].success = alien[nextAlien].success + 1
+			ELSE
+				marine[nextMarine].success = marine[nextMarine].success + 1
+			ENDIF
+		ENDIF
+	NEXT
+
+ENDFUNCTION
+
+FUNCTION FireIntensityDieRoll: intensity
+
+	LOCAL result
+
+	success = 0
+
+	FOR f = 0 TO (intensity - 1)
+		result = (RND(5) + 1)
+
+		IF result = 6
+			success = success + 1
+		ENDIF
+	NEXT
+
+ENDFUNCTION
+
+FUNCTION SkillDiceRoll: statNum, skillNum = 0, stressNum = 0, bonus = 0, modification = 0, weaponSpecialisation = 0
+
+	LOCAL result, diePool
+
+	success = 0
+
+	diePool = statNum + skillNum + weaponSpecialisation + bonus + modification
+
+	FOR i = 0 TO (diePool - 1)
+		result = (RND(5) + 1)
+
+		IF result = 6
+			success = success + 1
+		ENDIF
+	NEXT
+
+
+	//FOR i = 0 TO (statNum - 1)
+	//	result = (RND(5) + 1)
+
+	//	IF result = 6
+	//		success = success + 1
+	//	ENDIF
+	//NEXT
+
+	//FOR i = 0 TO (skillNum - 1)
+	//	result = (RND(5) + 1)
+
+	//	IF result = 6
+	//		success = success + 1
+	//	ENDIF
+	//NEXT
+
+	//FOR i = 0 TO (bonus - 1)
+	//	result = (RND(5) + 1)
+
+	//	IF result = 6
+	//		success = success + 1
+	//	ENDIF
+	//NEXT
+
+	//FOR i = 0 TO (modification - 1)
+	//	result = (RND(5) + 1)
+
+	//	IF result = 6
+	//		success = success + 1
+	//	ENDIF
+	//NEXT
+
+	//FOR i = 0 TO (weaponSpecialisation - 1)
+	//	result = (RND(5) + 1)
+
+	//	IF result = 6
+	//		success = success + 1
+	//	ENDIF
+	//NEXT
+
+	FOR i = 0 TO (stressNum - 1)
+		result = (RND(5) + 1)
+
+		IF result = 6
+			success = success + 1
+		ENDIF
+
+		IF result = 1
+			panic = panic + 1
+		ENDIF
+	NEXT
+
+ENDFUNCTION
+
+FUNCTION PanicDiceRoll: stressNum
+
+	LOCAL result
+
+	result = (RND(5) + 1) + stressNum
+
+	SELECT result
+
+		CASE 1 TO 6
+			IF alien[nextAlien].attack = 2
+				//PRINT marine[nextMarine].name$ + " is fine!", 100, statusUIY + 20
+				updateStatus(marine[nextMarine].name$ + " is fine!")
+				marine[nextMarine].panicStatus$ = "O.K."
+			ELSE
+				//PRINT marine[nextMarine].name$ + " is fine!", 100, statusUIY
+				updateStatus(marine[nextMarine].name$ + " is fine!")
+				marine[nextMarine].panicStatus$ = "O.K."
+			ENDIF
+
+		CASE 7
+			IF alien[nextAlien].attack = 2
+				//PRINT marine[nextMarine].name$ + " starts to get a nervous twitch", 100, statusUIY + 20
+				updateStatus(marine[nextMarine].name$ + " starts to get a nervous twitch")
+				marine[nextMarine].panicStatus$ = "Nervous twitch"
+			ELSE
+				//PRINT marine[nextMarine].name$ + " starts to get a nervous twitch", 100, statusUIY
+				updateStatus(marine[nextMarine].name$ + " starts to get a nervous twitch")
+				marine[nextMarine].panicStatus$ = "Nervous twitch"
+			ENDIF
+
+			// Stress level of nearby marines increase by 1
+
+		CASE 8
+			IF alien[nextAlien].attack = 2
+				//PRINT marine[nextMarine].name$ + " starts to tremble uncontrollably", 100, statusUIY + 20
+				updateStatus(marine[nextMarine].name$ + " starts to tremble uncontrollably")
+				marine[nextMarine].panicStatus$ = "Trembling uncontrollably"
+			ELSE
+				//PRINT marine[nextMarine].name$ + " starts to tremble uncontrollably", 100, statusUIY
+				updateStatus(marine[nextMarine].name$ + " starts to tremble uncontrollably")
+				marine[nextMarine].panicStatus$ = "Trembling uncontrollably"
+			ENDIF
+
+		CASE 9
+			IF alien[nextAlien].attack = 2
+				//PRINT marine[nextMarine].name$ + " drops the weapon", 100, statusUIY + 20
+				updateStatus(marine[nextMarine].name$ + " drops the weapon")
+				marine[nextMarine].panicStatus$ = "Weapon dropped"
+			ELSE
+				//PRINT marine[nextMarine].name$ + " drops the weapon", 100, statusUIY
+				updateStatus(marine[nextMarine].name$ + " drops the weapon")
+				marine[nextMarine].panicStatus$ = "Weapon dropped"
+			ENDIF
+
+			marine[nextMarine].stress = marine[nextMarine].stress + 1
+			marine[nextMarine].isHeldWeapon = 0
+
+		CASE 10
+			IF alien[nextAlien].attack = 2
+				//PRINT marine[nextMarine].name$ + "is frozen by fear!", 100, statusUIY + 20
+				updateStatus(marine[nextMarine].name$ + "is frozen by fear!")
+				marine[nextMarine].panicStatus$ = "Frozen by fear"
+			ELSE
+				//PRINT marine[nextMarine].name$ + "is frozen by fear!", 100, statusUIY
+				updateStatus(marine[nextMarine].name$ + "is frozen by fear!")
+				marine[nextMarine].panicStatus$ = "Frozen by fear"
+			ENDIF
+
+			// Stress level of nearby marines increase by 1
+
+		CASE 11
+			IF alien[nextAlien].attack = 2
+				//PRINT marine[nextMarine].name$ + " runs away", 100, statusUIY + 20
+				updateStatus(marine[nextMarine].name$ + " runs away")
+				marine[nextMarine].panicStatus$ = "Runs away"
+			ELSE
+				//PRINT marine[nextMarine].name$ + " runs away", 100, statusUIY
+				updateStatus(marine[nextMarine].name$ + " runs away")
+				marine[nextMarine].panicStatus$ = "Runs away"
+			ENDIF
+
+			marine[nextMarine].stress = marine[nextMarine].stress - 1
+			// Stress level of nearby marines increase by 1
+
+		CASE 12
+			IF alien[nextAlien].attack = 2
+				//PRINT marine[nextMarine].name$ + " screams!", 100, statusUIY + 20
+				updateStatus(marine[nextMarine].name$ + " screams!")
+				marine[nextMarine].panicStatus$ = "Screams"
+			ELSE
+				//PRINT marine[nextMarine].name$ + " screams!", 100, statusUIY
+				updateStatus(marine[nextMarine].name$ + " screams!")
+				marine[nextMarine].panicStatus$ = "Screams"
+			ENDIF
+
+			marine[nextMarine].stress = marine[nextMarine].stress - 1
+			// other marines my make a panic roll
+
+		CASE 13
+			IF alien[nextAlien].attack = 2
+				//PRINT marine[nextMarine].name$ + " shouts 'Let's get the fuck outa here!'", 100, statusUIY + 20
+				updateStatus(marine[nextMarine].name$ + " shouts 'Let's get the fuck outa here!'")
+			ELSE
+				//PRINT marine[nextMarine].name$ + " shouts 'Let's get the fuck outa here!'", 100, statusUIY
+				updateStatus(marine[nextMarine].name$ + " shouts 'Let's get the fuck outa here!'")
+			ENDIF
+
+			marine[nextMarine].stress = marine[nextMarine].stress - 1
+			// other marines may make a panic roll
+
+		CASE 14
+			IF alien[nextAlien].attack = 2
+				//PRINT marine[nextMarine].name$ + " goes berzerk!", 100, statusUIY + 20
+				updateStatus(marine[nextMarine].name$ + " goes berzerk!")
+				marine[nextMarine].panicStatus$ = "Berzerk"
+			ELSE
+				//PRINT marine[nextMarine].name$ + " goes berzerk!", 100, statusUIY
+				updateStatus(marine[nextMarine].name$ + " goes berzerk!")
+				marine[nextMarine].panicStatus$ = "Berzerk"
+			ENDIF
+
+			// Attack anyone
+			// other marines may make a panic roll
+
+		CASE >=15
+			IF alien[nextAlien].attack = 2
+				//PRINT marine[nextMarine].name$ + " is catatonic", 100, statusUIY + 20
+				updateStatus(marine[nextMarine].name$ + " is catatonic")
+				marine[nextMarine].panicStatus$ = "Catatonic"
+			ELSE
+				//PRINT marine[nextMarine].name$ + " is catatonic", 100, statusUIY
+				updateStatus(marine[nextMarine].name$ + " is catatonic")
+				marine[nextMarine].panicStatus$ = "Catatonic"
+			ENDIF
+
+	ENDSELECT
+
+
+ENDFUNCTION
+
+FUNCTION checkDeath: charType$
+
+	LOCAL a, m
+
+	IF charType$ = "alien"
+		FOR a = 0 TO (LEN(alien) - 1)
+			IF alien[a].health <= 0
+				alien[a].isDead = TRUE
+			ELSE
+				BREAK
+			ENDIF
+		NEXT
+
+		//RETURN a
+	ELSE
+		FOR m = 0 TO (LEN(marine) - 1)
+			IF marine[m].health <= 0
+				marine[m].isDead = TRUE
+			ELSE
+				BREAK
+			ENDIF
+		NEXT
+
+		//RETURN m
+	ENDIF
+
+ENDFUNCTION
